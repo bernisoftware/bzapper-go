@@ -175,6 +175,76 @@ usage, _ := client.GetUsage(ctx, bzapper.GetUsageParams{
 fmt.Println(usage.Total, usage.DeliveryRate)
 ```
 
+## Webhooks
+
+Two parts: **manage** subscriptions with the client, and **receive** deliveries
+with `WebhookReceiver`.
+
+### Manage subscriptions
+
+```go
+created, _ := client.CreateWebhook(ctx, bzapper.CreateWebhookParams{
+	URL:        "https://example.com/webhooks",
+	EventTypes: []string{"message.received", "message.failed"}, // empty = all
+})
+// created.Secret is shown ONLY ONCE — store it; you pass it to the receiver.
+fmt.Println(created.ID, created.Secret)
+
+client.ListWebhooks(ctx)
+client.TestWebhook(ctx, created.ID, "message.received")
+client.WebhookDeliveries(ctx, created.ID, 20)
+
+active := false
+client.UpdateWebhook(ctx, created.ID, bzapper.UpdateWebhookParams{Active: &active})
+client.DeleteWebhook(ctx, created.ID)
+```
+
+`UpdateWebhookParams` uses pointers so you only send what you set. Use
+`Secret: ptr("regenerate")` to rotate the signing secret.
+
+### Receive deliveries
+
+Each delivery is signed: `X-Bzapper-Signature: sha256=<hex>` where the hex is
+`HMAC-SHA256(secret, raw_body)`. The receiver verifies the signature (timing-safe,
+against the **raw** body), parses the envelope into a typed `*WebhookEvent`, and
+routes it to your handlers. A `*WebhookReceiver` is itself an `http.Handler`:
+
+```go
+secret := os.Getenv("BZAPPER_WEBHOOK_SECRET") // the created.Secret from above
+
+http.Handle("/webhooks", bzapper.NewWebhookReceiver(secret).
+	On("message.received", func(e *bzapper.WebhookEvent) {
+		fmt.Println(e.Sender.Name, e.Payload["body"])
+	}).
+	On("message.failed", func(e *bzapper.WebhookEvent) {
+		fmt.Println("failed:", e.ID)
+	}).
+	OnAny(func(e *bzapper.WebhookEvent) {
+		// runs for every event — e.g. store e.ID for idempotency.
+	}))
+
+log.Fatal(http.ListenAndServe(":8080", nil))
+```
+
+`WebhookEvent` carries `ID`, `Type`, `Timestamp`, `InstanceID`, `ClientReference`,
+`Group`, `Sender`, `Mentions`, `Payload` and the original `Raw` bytes. The API may
+retry deliveries, so dedupe on `e.ID`.
+
+For non-`net/http` frameworks, drive it directly with the raw body and signature
+header:
+
+```go
+rcv := bzapper.NewWebhookReceiver(secret).On("message.received", handler)
+
+event, err := rcv.Handle(rawBody, signatureHeader)
+if errors.Is(err, bzapper.ErrInvalidSignature) {
+	// reject: do NOT process — return 400
+}
+```
+
+You can also verify/parse without a receiver via `bzapper.VerifyWebhook(secret,
+body, sig)` and `bzapper.ConstructWebhookEvent(secret, body, sig)`.
+
 ## Groups, presence and conversations
 
 `instance_id` is sent in the query for these endpoints (or in the body where the
