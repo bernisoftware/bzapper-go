@@ -29,7 +29,7 @@ import (
 )
 
 func main() {
-	client := bzapper.New("http://localhost:8080", "bz_live_...")
+	client := bzapper.NewClient("bz_live_...")
 
 	msg, err := client.SendText(context.Background(), bzapper.SendTextParams{
 		SendBase: bzapper.SendBase{To: "+5511999999999"},
@@ -42,20 +42,25 @@ func main() {
 }
 ```
 
+The base URL defaults to `https://api.bzapper.com.br`. For dev/self-host, override it
+with an option: `bzapper.NewClient("bz_live_...", bzapper.WithBaseURL("http://localhost:8080"))`.
+
 ## Configuration
 
-`New(baseURL, apiKey string, opts ...Option)` returns a `*Client` that is safe
+`NewClient(apiKey string, opts ...Option)` returns a `*Client` that is safe
 for concurrent use. Every request sends `Authorization: Bearer <apiKey>`,
 `Content-Type: application/json` and (when set) `Accept-Language: <locale>`.
+(The older `New(baseURL, apiKey string, opts ...Option)` still exists for backward compat.)
 
 | Option                       | Purpose                                              |
 | ---------------------------- | ---------------------------------------------------- |
+| `WithBaseURL(url)`           | Override the base URL (dev/self-host).               |
 | `WithLocale("pt-BR")`        | Sets `Accept-Language` (localizes error messages).   |
 | `WithTimeout(30*time.Second)`| Request timeout (default 30s).                       |
 | `WithHTTPClient(hc)`         | Supply your own `*http.Client` (proxy, transport…).  |
 
 ```go
-client := bzapper.New("https://api.bzapper.com.br", "bz_live_...",
+client := bzapper.NewClient("bz_live_...",
 	bzapper.WithLocale("pt-BR"),
 	bzapper.WithTimeout(15*time.Second),
 )

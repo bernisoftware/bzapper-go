@@ -3,9 +3,9 @@
 // packages/sdk/openapi.yaml using only the standard library (net/http +
 // encoding/json).
 //
-// Quick start:
+// Quick start (points at production — just pass your API key):
 //
-//	client := bzapper.New("http://localhost:8080", "bz_live_...")
+//	client := bzapper.NewClient("bz_live_...")
 //	msg, err := client.SendText(context.Background(), bzapper.SendTextParams{
 //		To:   "+5511999999999",
 //		Body: "Olá do bZapper!",
@@ -29,7 +29,11 @@ import (
 )
 
 // Version is the SDK version.
-const Version = "0.2.0"
+const Version = "0.5.0"
+
+// DefaultBaseURL is the production API. NewClient uses it by default; override
+// only in dev/self-host via WithBaseURL (or the New(baseURL, ...) constructor).
+const DefaultBaseURL = "https://api.bzapper.com.br"
 
 // DefaultTimeout is applied when no custom http.Client or timeout is provided.
 const DefaultTimeout = 30 * time.Second
@@ -69,11 +73,31 @@ func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.httpClient = hc }
 }
 
-// New creates a Client.
+// WithBaseURL overrides the API base URL (default: DefaultBaseURL, production).
+// Use it with NewClient for dev ("http://localhost:8080") or self-host.
+func WithBaseURL(baseURL string) Option {
+	return func(c *Client) { c.baseURL = strings.TrimRight(baseURL, "/") }
+}
+
+// NewClient creates a Client pointing at the production API — pass just your API
+// key. This is the recommended constructor:
 //
-//   - baseURL: e.g. "https://api.bzapper.com.br" or "http://localhost:8080".
+//	client := bzapper.NewClient("bz_live_...")
+//
+// Override the URL only for dev/self-host: bzapper.NewClient("bz_live_...", bzapper.WithBaseURL("http://localhost:8080")).
+func NewClient(apiKey string, opts ...Option) *Client {
+	return New(DefaultBaseURL, apiKey, opts...)
+}
+
+// New creates a Client with an explicit base URL. Prefer NewClient (which
+// defaults to production). An empty baseURL falls back to DefaultBaseURL.
+//
+//   - baseURL: e.g. "https://api.bzapper.com.br" or "http://localhost:8080" ("" = production).
 //   - apiKey:  tenant API key, e.g. "bz_live_...".
 func New(baseURL, apiKey string, opts ...Option) *Client {
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = DefaultBaseURL
+	}
 	c := &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,

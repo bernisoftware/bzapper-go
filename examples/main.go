@@ -19,17 +19,21 @@ import (
 )
 
 func main() {
-	baseURL := os.Getenv("BZAPPER_BASE_URL")
 	apiKey := os.Getenv("BZAPPER_API_KEY")
-	if baseURL == "" || apiKey == "" {
-		log.Println("set BZAPPER_BASE_URL and BZAPPER_API_KEY to run this example")
+	if apiKey == "" {
+		log.Println("set BZAPPER_API_KEY to run this example")
 		return
 	}
 
-	client := bzapper.New(baseURL, apiKey,
+	opts := []bzapper.Option{
 		bzapper.WithLocale("pt-BR"),
-		bzapper.WithTimeout(30*time.Second),
-	)
+		bzapper.WithTimeout(30 * time.Second),
+	}
+	// BZAPPER_BASE_URL é opcional: sem ele, o SDK aponta para produção.
+	if baseURL := os.Getenv("BZAPPER_BASE_URL"); baseURL != "" {
+		opts = append(opts, bzapper.WithBaseURL(baseURL))
+	}
+	client := bzapper.NewClient(apiKey, opts...)
 
 	ctx := context.Background()
 	const to = "+5511999999999"
