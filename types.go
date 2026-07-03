@@ -53,6 +53,10 @@ type SendBase struct {
 	// number already talking to To (support). Defaults to true server-side;
 	// set false to force rotation. Optional.
 	Sticky *bool `json:"sticky,omitempty"`
+	// ScheduledAt schedules the send for a future RFC3339 time. The number is
+	// picked at send time. Max lead: Free 24h, Pro 30 days, 1 year with the
+	// extended-scheduling add-on. Returns status "scheduled". OTP can't be scheduled.
+	ScheduledAt string `json:"scheduled_at,omitempty"`
 }
 
 // MediaInput describes media sent by URL or by base64 (use one, never both).
@@ -440,13 +444,13 @@ type SetProfileParams struct {
 
 // ContactRecord is a contact captured automatically from incoming conversations.
 type ContactRecord struct {
-	ID           string `json:"id"`
-	ChatJID      string `json:"chat_jid"`
-	Phone        string `json:"phone"`
-	Name         string `json:"name"`
-	AvatarURL    string `json:"avatar_url"`
-	InstanceID   string `json:"instance_id,omitempty"`
-	MessageCount int    `json:"message_count"`
+	ID            string `json:"id"`
+	ChatJID       string `json:"chat_jid"`
+	Phone         string `json:"phone"`
+	Name          string `json:"name"`
+	AvatarURL     string `json:"avatar_url"`
+	InstanceID    string `json:"instance_id,omitempty"`
+	MessageCount  int    `json:"message_count"`
 	LastMessageAt string `json:"last_message_at,omitempty"`
 }
 

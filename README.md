@@ -70,7 +70,7 @@ All message methods embed `SendBase`:
 | Field             | Notes                                                       |
 | ----------------- | ----------------------------------------------------------- |
 | `To`              | Required. Destination in E.164 (`+5511...`) or a JID.       |
-| `InstanceID`      | Pin a specific number (bypasses rotation).                  |
+| `InstanceID`      | **Optional.** Force a specific number (bypasses rotation). Omit to auto-pick (rotation). |
 | `PoolID`          | Rotate within a pool (when `InstanceID` is empty).          |
 | `QuotedMessageID` | `wa_message_id` to reply to.                                |
 | `ClientReference` | Echoed back in status events for correlation.               |

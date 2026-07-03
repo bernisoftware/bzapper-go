@@ -1,0 +1,21 @@
+# Go não tem "registro": `go get github.com/bernisoftware/bzapper-go@vX.Y.Z` resolve
+# direto da TAG do repo público. Este workflow só valida e "esquenta" o proxy oficial
+# (proxy.golang.org) pra a versão ficar instantaneamente disponível. Sem secrets.
+name: publish
+on:
+  push:
+    tags: ['v*']
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+      - run: go vet ./...
+      - run: go build ./...
+      - name: Esquenta o proxy do Go (publica no índice)
+        run: GOPROXY=https://proxy.golang.org go list -m "github.com/${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}" || true
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
