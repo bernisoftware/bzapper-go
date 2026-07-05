@@ -10,9 +10,15 @@ import (
 // --- Instances ---
 
 // ListInstances lists the tenant's numbers/instances. GET /instances.
-func (c *Client) ListInstances(ctx context.Context) (*InstanceList, error) {
+// Pass an optional ListInstancesParams to scope by project (a project id or
+// "all"); with no argument it uses the active project.
+func (c *Client) ListInstances(ctx context.Context, opts ...ListInstancesParams) (*InstanceList, error) {
+	q := url.Values{}
+	if len(opts) > 0 && opts[0].ProjectID != "" {
+		q.Set("project_id", opts[0].ProjectID)
+	}
 	var out InstanceList
-	if err := c.do(ctx, http.MethodGet, "/instances", nil, nil, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, "/instances", q, nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -105,8 +111,9 @@ func (c *Client) GetUsage(ctx context.Context, p GetUsageParams) (*UsageSummary,
 // --- Account contacts (captured from conversations) ---
 
 // ListContacts lists the account's contact base (captured from conversations).
-// p.ProjectID may be a project id or "current". All filters are optional.
-// GET /contacts?search=&project_id=&limit=.
+// p.ProjectID may be a project id or "current"; p.InstanceID filters by a number
+// the contact interacted with. All filters are optional.
+// GET /contacts?search=&project_id=&instance_id=&limit=.
 func (c *Client) ListContacts(ctx context.Context, p ListContactsParams) (*ContactRecordList, error) {
 	q := url.Values{}
 	if p.Search != "" {
@@ -114,6 +121,9 @@ func (c *Client) ListContacts(ctx context.Context, p ListContactsParams) (*Conta
 	}
 	if p.ProjectID != "" {
 		q.Set("project_id", p.ProjectID)
+	}
+	if p.InstanceID != "" {
+		q.Set("instance_id", p.InstanceID)
 	}
 	if p.Limit > 0 {
 		q.Set("limit", strconv.Itoa(p.Limit))

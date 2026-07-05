@@ -460,11 +460,21 @@ type ContactRecordList struct {
 }
 
 // ListContactsParams is the query for ListContacts. ProjectID filters by
-// project: a project id or "current" (the one bound to your key). All optional.
+// project: a project id or "current" (the one bound to your key). InstanceID
+// filters by a number (instance) the contact interacted with — the contact↔number
+// link is maintained automatically by the API. All optional.
 type ListContactsParams struct {
-	Search    string
+	Search     string
+	ProjectID  string
+	InstanceID string
+	Limit      int
+}
+
+// ListInstancesParams is the optional query for ListInstances. ProjectID scopes
+// the numbers by project: a project id, or "all" for every number in the account.
+// Empty uses the active project (X-Project-Id). Optional.
+type ListInstancesParams struct {
 	ProjectID string
-	Limit     int
 }
 
 // --- Projects (numbers, inbox, keys and stats are isolated per project) ---
