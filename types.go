@@ -187,9 +187,33 @@ type Instance struct {
 	JID          string         `json:"jid,omitempty"`
 	Status       InstanceStatus `json:"status"`
 	StatusReason string         `json:"status_reason,omitempty"`
-	ProxyURL     string         `json:"proxy_url,omitempty"`
+	// BannedUntil: quando um ban TEMPORÁRIO expira (o número reconecta sozinho).
+	// Vazio em ban permanente (revisão no app + re-pareamento) ou sem ban.
+	BannedUntil string `json:"banned_until,omitempty"`
+	ProxyURL    string `json:"proxy_url,omitempty"`
 	CreatedAt    string         `json:"created_at,omitempty"`
 	UpdatedAt    string         `json:"updated_at,omitempty"`
+
+	// ConsecutiveSendFailures counts sends rejected by WhatsApp in a row. It
+	// resets to 0 on the first accepted send. A connected number with a value
+	// above zero is alive but not delivering — inspect LastSendErrorCode.
+	ConsecutiveSendFailures int `json:"consecutive_send_failures,omitempty"`
+	// LastSendErrorCode is the code WhatsApp returned on the last rejected send.
+	LastSendErrorCode int    `json:"last_send_error_code,omitempty"`
+	LastSendFailureAt string `json:"last_send_failure_at,omitempty"`
+	LastSendError     string `json:"last_send_error,omitempty"`
+}
+
+// ReachOutLockCode is WhatsApp's anti-spam reach-out time-lock. It is a
+// per-account limit, not an infrastructure failure: the session stays healthy,
+// replies to people who messaged first still go through, and it usually clears
+// within hours.
+const ReachOutLockCode = 463
+
+// IsReachOutLocked reports whether WhatsApp is refusing this number's sends
+// because of the anti-spam reach-out time-lock.
+func (i Instance) IsReachOutLocked() bool {
+	return i.LastSendErrorCode == ReachOutLockCode && i.ConsecutiveSendFailures > 0
 }
 
 // Pagination is the pagination envelope returned with list responses.

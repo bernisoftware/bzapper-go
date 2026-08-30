@@ -63,6 +63,18 @@ func (c *Client) DisconnectInstance(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodPost, "/instances/"+url.PathEscape(id)+"/disconnect", nil, nil, nil)
 }
 
+// ClearInstanceSession wipes the paired WhatsApp device credential, forcing a
+// clean re-pairing. Use it when ConnectInstance will not produce a QR code, or
+// when pairing is stuck in an inconsistent state: a plain logout only drops the
+// reference and leaves the old device behind.
+//
+// Destructive and irreversible — the number goes offline and must be paired
+// again by scanning a QR code. Idempotent and safe to retry.
+// POST /instances/{id}/clear-session.
+func (c *Client) ClearInstanceSession(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodPost, "/instances/"+url.PathEscape(id)+"/clear-session", nil, nil, nil)
+}
+
 // --- API keys ---
 
 // ListKeys lists the tenant's API keys (without the raw key). GET /keys.
