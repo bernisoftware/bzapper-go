@@ -1,21 +1,107 @@
 # Go não tem "registro": `go get github.com/bernisoftware/bzapper-go@vX.Y.Z` resolve
-# direto da TAG do repo público. Este workflow só valida e "esquenta" o proxy oficial
-# (proxy.golang.org) pra a versão ficar instantaneamente disponível. Sem secrets.
+# direto da TAG do repo público (criada pelo scripts/release-sdks.sh do monorepo). Este
+# workflow valida e "esquenta" o proxy oficial (proxy.golang.org) pra a versão ficar
+# instantaneamente disponível. Sem secrets.
+#
+# O proxy guarda PARA SEMPRE a primeira cópia que buscar de uma tag — por isso nenhum
+# passo toca o proxy antes da suíte verde (conformidade + unitários) e da tag bater com a
+# constante Version. Tag errada? Apague-a no espelho ANTES de alguém buscá-la.
 name: publish
 on:
   push:
     tags: ['v*']
+
+permissions:
+  contents: read
+
 jobs:
-  go:
+  test:
+    name: test (Go ${{ matrix.go }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        go: ['1.22', 'stable']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: ${{ matrix.go }}
+          cache: false # sem dependências: não há go.sum para chavear o cache
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          [ -z "$unformatted" ] || { echo "::error::rode gofmt -w em: $unformatted"; exit 1; }
       - run: go vet ./...
       - run: go build ./...
+      # Conformidade (testdata/conformance/cases.json: todas as operações, erros, novas
+      # tentativas, idempotência, assinatura de webhook) + unitários + versão. Sem rede
+      # externa: a suíte sobe um servidor httptest local e não dorme nas esperas.
+      - run: go test -race -count=1 -v ./...
+
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A tag é a versão publicada; Version vai no X-Bzapper-Client de toda requisição.
+      - name: A tag bate com Version (client.go)
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          code="$(sed -nE 's/^const Version = "([^"]+)"$/\1/p' client.go)"
+          [ -n "$code" ] || { echo "::error::não achei 'const Version = \"...\"' em client.go"; exit 1; }
+          [ "$tag" = "$code" ] || { echo "::error::tag $GITHUB_REF_NAME != Version $code"; exit 1; }
+          echo "versão $code confirmada"
+
+  publish:
+    needs: [test, version] # sem suíte verde e tag conferida, o proxy não vê a tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
       - name: Esquenta o proxy do Go (publica no índice)
-        run: GOPROXY=https://proxy.golang.org go list -m "github.com/${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}" || true
         env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GOPROXY: https://proxy.golang.org
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if go list -m -json "github.com/${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}"; then
+              exit 0
+            fi
+            echo "proxy ainda não viu ${GITHUB_REF_NAME} (tentativa $attempt) — esperando"
+            sleep 15
+          done
+          echo "::error::proxy.golang.org não serviu ${GITHUB_REF_NAME}"
+          exit 1
+
+      # A suíte roda de novo contra o módulo COMO O USUÁRIO RECEBE (zip do proxy, conferido
+      # no sum.golang.org) — pega arquivo fora do espelho, testdata ausente ou Version
+      # diferente da tag.
+      - name: Suíte contra o módulo servido pelo proxy
+        env:
+          GOPROXY: https://proxy.golang.org
+          GOFLAGS: -mod=mod
+        run: |
+          mkdir -p /tmp/verify && cd /tmp/verify
+          go mod init verify.local/bzapper
+          go get "github.com/${GITHUB_REPOSITORY}@${GITHUB_REF_NAME}"
+          go test -count=1 "github.com/${GITHUB_REPOSITORY}"
+          cat > main.go <<'EOF'
+          package main
+
+          import (
+          	"fmt"
+          	"os"
+
+          	bzapper "github.com/bernisoftware/bzapper-go"
+          )
+
+          func main() {
+          	if want := os.Args[1]; "v"+bzapper.Version != want {
+          		fmt.Fprintf(os.Stderr, "Version %s no módulo publicado, tag %s\n", bzapper.Version, want)
+          		os.Exit(1)
+          	}
+          	fmt.Println("módulo publicado ok:", bzapper.Version)
+          }
+          EOF
+          go run . "${GITHUB_REF_NAME}"

@@ -93,6 +93,7 @@ type ConnectionNumber struct {
 // account. Timestamps are RFC3339 strings; the nullable ones are pointers.
 type PartnerConnection struct {
 	ID         string           `json:"id"`
+	PartnerID  string           `json:"partner_id,omitempty"`
 	ExternalID string           `json:"external_id"`
 	Status     ConnectionStatus `json:"status"`
 	// AccountID is the customer's bZapper account (tenant).
@@ -107,6 +108,7 @@ type PartnerConnection struct {
 	SuspendedAt    *string `json:"suspended_at,omitempty"`
 	RevokedAt      *string `json:"revoked_at,omitempty"`
 	CreatedAt      string  `json:"created_at,omitempty"`
+	UpdatedAt      string  `json:"updated_at,omitempty"`
 }
 
 // PartnerConnectionWithKey is a connection plus the raw API key (bz_live_...),

@@ -119,10 +119,12 @@ func TestSendText_IdempotencyKeyHeader(t *testing.T) {
 	}
 }
 
-func TestSendText_NoIdempotencyKeyByDefault(t *testing.T) {
+// Since the r2 standard every write carries an Idempotency-Key generated per
+// call (uuid4) when the caller does not provide one.
+func TestSendText_AutoIdempotencyKeyByDefault(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := r.Header["Idempotency-Key"]; ok {
-			t.Errorf("unexpected Idempotency-Key header")
+		if k := r.Header.Get("Idempotency-Key"); len(k) != 36 {
+			t.Errorf("expected a generated uuid Idempotency-Key, got %q", k)
 		}
 		_, _ = w.Write([]byte(`{"message_id":"m1","status":"queued"}`))
 	})

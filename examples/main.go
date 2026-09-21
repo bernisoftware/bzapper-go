@@ -162,6 +162,19 @@ func main() {
 	if usage, err := client.GetUsage(ctx, bzapper.GetUsageParams{}); err == nil {
 		fmt.Printf("usage total: %d (delivery rate %.2f)\n", usage.Total, usage.DeliveryRate)
 	}
+
+	// Who am I + the CRM contact base (tags filter).
+	if me, err := client.GetMe(ctx); err == nil {
+		fmt.Printf("account: %s (%s)\n", me.TenantName, me.Role)
+	}
+	if page, err := client.ListContacts(ctx, bzapper.ListContactsParams{Status: "active", Limit: 10}); err == nil {
+		fmt.Printf("contacts: %d\n", page.Total)
+	}
+	if _, err := client.GetInstance(ctx, "00000000-0000-4000-8000-000000000000"); errors.Is(err, bzapper.ErrNotFound) {
+		var apiErr *bzapper.Error
+		errors.As(err, &apiErr)
+		fmt.Printf("not found as expected (code=%s request_id=%s)\n", apiErr.Code, apiErr.RequestID)
+	}
 }
 
 func mustSend(msg *bzapper.Message, err error) {
@@ -169,7 +182,7 @@ func mustSend(msg *bzapper.Message, err error) {
 		var apiErr *bzapper.Error
 		if errors.As(err, &apiErr) {
 			// Branch on the stable Code, never the message text.
-			log.Fatalf("api error: code=%s status=%d msg=%q", apiErr.Code, apiErr.StatusCode, apiErr.Message)
+			log.Fatalf("api error: code=%s status=%d request_id=%s msg=%q", apiErr.Code, apiErr.StatusCode, apiErr.RequestID, apiErr.Message)
 		}
 		log.Fatalf("transport error: %v", err)
 	}

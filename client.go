@@ -17,13 +17,9 @@
 package bzapper
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -34,7 +30,7 @@ import (
 //
 // Not cosmetic: it goes in the X-Bzapper-Client header of every request, which
 // is how the API knows who to warn when a fix requires updating integration code.
-const Version = "0.6.2"
+const Version = "0.7.0"
 
 // ClientID identifies the SDK and version to the API (X-Bzapper-Client / User-Agent).
 const ClientID = "bzapper-go/" + Version
@@ -52,7 +48,18 @@ type Client struct {
 	baseURL    string
 	apiKey     string
 	locale     string
+	projectID  string
+	maxRetries int
 	httpClient *http.Client
+
+	// hooks holds the retry sleep behind a pointer so Client stays comparable.
+	hooks *clientHooks
+}
+
+// clientHooks: sleep waits between retries. The package tests swap it for one
+// that only records the wait — the conformance suite never really sleeps.
+type clientHooks struct {
+	sleep func(ctx context.Context, d time.Duration) error
 }
 
 // Option customizes a Client. Pass options to New.
@@ -64,7 +71,27 @@ func WithLocale(locale string) Option {
 	return func(c *Client) { c.locale = locale }
 }
 
-// WithTimeout sets the request timeout. Ignored if WithHTTPClient is also
+// WithMaxRetries sets how many times a failed call is retried after the first
+// attempt (default DefaultMaxRetries = 2; 0 disables retries; negative = 0).
+// Only network errors/timeouts and 429, 502, 503 and 504 are retried, with the
+// same X-Request-Id and Idempotency-Key, honoring Retry-After (capped at 60s)
+// or else an exponential backoff with jitter.
+func WithMaxRetries(n int) Option {
+	return func(c *Client) {
+		if n < 0 {
+			n = 0
+		}
+		c.maxRetries = n
+	}
+}
+
+// WithProjectID sends X-Project-Id on every request, scoping the calls to that
+// project (a project-bound API key already carries its own).
+func WithProjectID(projectID string) Option {
+	return func(c *Client) { c.projectID = projectID }
+}
+
+// WithTimeout sets the request timeout (per attempt). Ignored if WithHTTPClient is also
 // provided.
 func WithTimeout(d time.Duration) Option {
 	return func(c *Client) {
@@ -102,16 +129,24 @@ func NewClient(apiKey string, opts ...Option) *Client {
 //
 //   - baseURL: e.g. "https://api.bzapper.com.br" or "http://localhost:8080" ("" = production).
 //   - apiKey:  tenant API key, e.g. "bz_live_...".
+//
+// No network call is made. An empty apiKey is not rejected here (the signature
+// predates the rule); every call then fails with an error matching
+// ErrInvalidArgument before any request is sent.
 func New(baseURL, apiKey string, opts ...Option) *Client {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = DefaultBaseURL
 	}
 	c := &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKey:     apiKey,
+		maxRetries: DefaultMaxRetries,
+		hooks:      &clientHooks{sleep: sleepContext},
 	}
 	for _, opt := range opts {
-		opt(c)
+		if opt != nil {
+			opt(c)
+		}
 	}
 	if c.httpClient == nil {
 		c.httpClient = &http.Client{Timeout: DefaultTimeout}
@@ -121,72 +156,13 @@ func New(baseURL, apiKey string, opts ...Option) *Client {
 	return c
 }
 
-// do performs an HTTP request. body is JSON-encoded when non-nil. On a 2xx
-// response, out (when non-nil) is JSON-decoded from the body. On a non-2xx
-// response a *Error is returned.
-func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, out any) error {
-	return c.doWithHeaders(ctx, method, path, query, nil, body, out)
+// String describes the client WITHOUT the API key — safe to log.
+func (c *Client) String() string {
+	if c == nil {
+		return "bzapper.Client(nil)"
+	}
+	return fmt.Sprintf("bzapper.Client{baseURL: %q, maxRetries: %d}", c.baseURL, c.maxRetries)
 }
 
-// doWithHeaders is do with extra request headers (e.g. Idempotency-Key).
-func (c *Client) doWithHeaders(ctx context.Context, method, path string, query url.Values, headers http.Header, body, out any) error {
-	endpoint := c.baseURL + path
-	if len(query) > 0 {
-		endpoint += "?" + query.Encode()
-	}
-
-	var reqBody io.Reader
-	if body != nil {
-		buf, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("bzapper: encode request body: %w", err)
-		}
-		reqBody = bytes.NewReader(buf)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, reqBody)
-	if err != nil {
-		return fmt.Errorf("bzapper: build request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Accept", "application/json")
-	// Identifica SDK e versão para a API — é por ele que avisamos você quando a
-	// versão que roda tem correção que exige atualizar o código.
-	req.Header.Set("X-Bzapper-Client", ClientID)
-	req.Header.Set("User-Agent", ClientID)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if c.locale != "" {
-		req.Header.Set("Accept-Language", c.locale)
-	}
-	for k, vs := range headers {
-		for _, v := range vs {
-			req.Header.Set(k, v)
-		}
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("bzapper: request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("bzapper: read response body: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return parseError(resp.StatusCode, respBody)
-	}
-
-	if out == nil || len(bytes.TrimSpace(respBody)) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(respBody, out); err != nil {
-		return fmt.Errorf("bzapper: decode response body: %w", err)
-	}
-	return nil
-}
+// GoString is %#v — also without the API key.
+func (c *Client) GoString() string { return c.String() }

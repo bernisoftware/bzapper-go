@@ -21,8 +21,10 @@ type Webhook struct {
 	EventTypes   []string `json:"event_types"`
 	NumberFilter string   `json:"number_filter,omitempty"`
 	Active       bool     `json:"active"`
-	CreatedAt    string   `json:"created_at,omitempty"`
-	UpdatedAt    string   `json:"updated_at,omitempty"`
+	// Secret is only returned on creation/rotation (see WebhookCreated).
+	Secret    string `json:"secret,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // WebhookList is the response of ListWebhooks.
@@ -66,6 +68,10 @@ type UpdateWebhookParams struct {
 // WebhookTestResult is the response of TestWebhook — the delivery attempt's
 // outcome against the configured endpoint.
 type WebhookTestResult struct {
+	EventID   string `json:"event_id,omitempty"`
+	EventType string `json:"event_type,omitempty"`
+	// Status is the HTTP status your endpoint answered.
+	Status     int    `json:"status,omitempty"`
 	Delivered  bool   `json:"delivered"`
 	StatusCode int    `json:"status_code,omitempty"`
 	Error      string `json:"error,omitempty"`
@@ -80,6 +86,12 @@ type WebhookDelivery struct {
 	Success    bool   `json:"success"`
 	Error      string `json:"error,omitempty"`
 	CreatedAt  string `json:"created_at,omitempty"`
+
+	// Status is pending, delivered or failed; Attempts counts the tries.
+	Status    string `json:"status,omitempty"`
+	Attempts  int    `json:"attempts,omitempty"`
+	LastError string `json:"last_error,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // WebhookDeliveryList is the response of WebhookDeliveries.

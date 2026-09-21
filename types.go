@@ -62,6 +62,15 @@ type SendBase struct {
 	// picked at send time. Max lead: Free 24h, Pro 30 days, 1 year with the
 	// extended-scheduling add-on. Returns status "scheduled". OTP can't be scheduled.
 	ScheduledAt string `json:"scheduled_at,omitempty"`
+	// Groups are managed contact-group keys: the send goes to every ACTIVE
+	// contact in them (1:1). Optional.
+	Groups []string `json:"groups,omitempty"`
+	// Tags are contact-tag keys: the send goes to every ACTIVE contact with them
+	// (1:1). Optional.
+	Tags []string `json:"tags,omitempty"`
+	// Force skips the suppression/opt-out guard for this send (use with care —
+	// only for transactional messages the contact asked for). Optional.
+	Force bool `json:"force,omitempty"`
 	// IdempotencyKey is sent as the Idempotency-Key header (not in the body),
 	// up to 255 chars. Repeating a send with the same key within 24h (same
 	// account) returns the SAME response without sending again — safe retries
@@ -191,6 +200,10 @@ type Message struct {
 	MessageID       string `json:"message_id"`
 	Status          string `json:"status"`
 	ClientReference string `json:"client_reference,omitempty"`
+	// ScheduledID and ScheduledAt are set when the send was scheduled
+	// (Status "scheduled").
+	ScheduledID string `json:"scheduled_id,omitempty"`
+	ScheduledAt string `json:"scheduled_at,omitempty"`
 }
 
 // --- Instances ---
@@ -198,6 +211,8 @@ type Message struct {
 // Instance is a WhatsApp number/instance belonging to the tenant.
 type Instance struct {
 	ID           string         `json:"id"`
+	TenantID     string         `json:"tenant_id,omitempty"`
+	ProjectID    string         `json:"project_id,omitempty"`
 	Phone        string         `json:"phone"`
 	Nickname     string         `json:"nickname,omitempty"`
 	JID          string         `json:"jid,omitempty"`
@@ -218,6 +233,13 @@ type Instance struct {
 	LastSendErrorCode int    `json:"last_send_error_code,omitempty"`
 	LastSendFailureAt string `json:"last_send_failure_at,omitempty"`
 	LastSendError     string `json:"last_send_error,omitempty"`
+
+	// WarmingStartedAt is when the number entered the warm-up period.
+	WarmingStartedAt string `json:"warming_started_at,omitempty"`
+	// HealthScore is the number's health (0–100) used by health_weighted pools.
+	HealthScore int `json:"health_score,omitempty"`
+	// ArchivedAt is set when the number is archived (see ArchiveInstance).
+	ArchivedAt string `json:"archived_at,omitempty"`
 }
 
 // ReachOutLockCode is WhatsApp's anti-spam reach-out time-lock. It is a
@@ -312,6 +334,15 @@ type UsageSummary struct {
 	DeliveryRate float64         `json:"delivery_rate"`
 	ByType       map[string]int  `json:"by_type,omitempty"`
 	ByNumber     []UsageByNumber `json:"by_number,omitempty"`
+	// Series is the daily breakdown (sent/received per day).
+	Series []UsagePoint `json:"series,omitempty"`
+}
+
+// UsagePoint is one day of UsageSummary.Series.
+type UsagePoint struct {
+	Date     string `json:"date"`
+	Sent     int    `json:"sent"`
+	Received int    `json:"received"`
 }
 
 // GetUsageParams holds the optional date range (RFC3339) for GetUsage.
@@ -343,6 +374,17 @@ type PresenceChatParams struct {
 
 // Conversation is a chat (1:1 or group) the instance participates in.
 type Conversation struct {
+	// ChatJID, LastType, LastStatus, LastDirection ("in"/"out"), LastBody,
+	// LastAt and Unread are the fields the API returns.
+	ChatJID       string `json:"chat_jid,omitempty"`
+	LastType      string `json:"last_type,omitempty"`
+	LastStatus    string `json:"last_status,omitempty"`
+	LastDirection string `json:"last_direction,omitempty"`
+	LastBody      string `json:"last_body,omitempty"`
+	LastAt        string `json:"last_at,omitempty"`
+	Unread        int    `json:"unread,omitempty"`
+
+	// Legacy fields (kept for compatibility).
 	JID           string `json:"jid"`
 	Name          string `json:"name,omitempty"`
 	IsGroup       bool   `json:"is_group"`
@@ -360,6 +402,22 @@ type ConversationList struct {
 
 // ConversationMessage is a single message in a conversation history.
 type ConversationMessage struct {
+	ID              string `json:"id,omitempty"`
+	InstanceID      string `json:"instance_id,omitempty"`
+	Direction       string `json:"direction,omitempty"` // "in" | "out"
+	ChatJID         string `json:"chat_jid,omitempty"`
+	SenderJID       string `json:"sender_jid,omitempty"`
+	SenderLID       string `json:"sender_lid,omitempty"`
+	Status          string `json:"status,omitempty"`
+	QuotedID        string `json:"quoted_id,omitempty"`
+	ClientReference string `json:"client_reference,omitempty"`
+	MediaID         string `json:"media_id,omitempty"`
+	// Payload is the message content. A pointer (not a map) keeps
+	// ConversationMessage comparable, as it was before this field existed.
+	Payload   *map[string]any `json:"payload,omitempty"`
+	CreatedAt string          `json:"created_at,omitempty"`
+	UpdatedAt string          `json:"updated_at,omitempty"`
+
 	WAMessageID string `json:"wa_message_id"`
 	From        string `json:"from,omitempty"`
 	To          string `json:"to,omitempty"`
@@ -408,7 +466,9 @@ type Group struct {
 	Name         string             `json:"name,omitempty"`
 	Topic        string             `json:"topic,omitempty"`
 	Owner        string             `json:"owner,omitempty"`
-	Size         int                `json:"size,omitempty"` // participant count
+	Size         int                `json:"size,omitempty"`     // participant count
+	Announce     bool               `json:"announce,omitempty"` // only admins send
+	Locked       bool               `json:"locked,omitempty"`   // only admins edit info
 	Participants []GroupParticipant `json:"participants,omitempty"`
 	CreatedAt    string             `json:"created_at,omitempty"`
 }
@@ -449,8 +509,11 @@ type UpdateGroupParticipantsParams struct {
 
 // GroupInvite is the response of GroupInvite — a shareable invite link/code.
 type GroupInvite struct {
-	Code string `json:"code"`
-	URL  string `json:"url,omitempty"`
+	// InviteLink is the shareable link (https://chat.whatsapp.com/...), as
+	// returned by the API.
+	InviteLink string `json:"invite_link,omitempty"`
+	Code       string `json:"code"`
+	URL        string `json:"url,omitempty"`
 }
 
 // --- Contacts ---
@@ -464,6 +527,12 @@ type ContactsCheckParams struct {
 
 // ContactCheck is a single phone's WhatsApp registration result.
 type ContactCheck struct {
+	// Query is the phone as sent; InWhatsApp tells whether it has WhatsApp;
+	// JID/LID identify the account when it does.
+	Query      string `json:"query,omitempty"`
+	InWhatsApp bool   `json:"in_whatsapp,omitempty"`
+	LID        string `json:"lid,omitempty"`
+
 	Phone        string `json:"phone"`
 	IsRegistered bool   `json:"is_registered"`
 	JID          string `json:"jid,omitempty"`
@@ -497,11 +566,31 @@ type ContactRecord struct {
 	InstanceID    string `json:"instance_id,omitempty"`
 	MessageCount  int    `json:"message_count"`
 	LastMessageAt string `json:"last_message_at,omitempty"`
+
+	Email        string          `json:"email,omitempty"`
+	Document     string          `json:"document,omitempty"`
+	DocumentType string          `json:"document_type,omitempty"`
+	Address      *ContactAddress `json:"address,omitempty"`
+	// Status: active, pending_validation, opted_out, blocked or unreachable.
+	Status       string `json:"status,omitempty"`
+	StatusReason string `json:"status_reason,omitempty"`
+	// Source: inbound, outbound, api, import or widget.
+	Source     string `json:"source,omitempty"`
+	OptedOutAt string `json:"opted_out_at,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
+	// Tags and Groups are the contact's tag / contact-group keys. Pointers (not
+	// slices) keep ContactRecord comparable, as it was before these fields.
+	Tags   *[]string `json:"tags,omitempty"`
+	Groups *[]string `json:"groups,omitempty"`
 }
 
 // ContactRecordList is the response of ListContacts.
 type ContactRecordList struct {
-	Data []ContactRecord `json:"data"`
+	Data   []ContactRecord `json:"data"`
+	Total  int             `json:"total,omitempty"`
+	Limit  int             `json:"limit,omitempty"`
+	Offset int             `json:"offset,omitempty"`
 }
 
 // ListContactsParams is the query for ListContacts. ProjectID filters by
@@ -513,6 +602,30 @@ type ListContactsParams struct {
 	ProjectID  string
 	InstanceID string
 	Limit      int
+
+	// Tags / Groups filter by tag / contact-group keys, comma-separated
+	// ("vip,lead" — the wire format; a string keeps ListContactsParams
+	// comparable). TagsMatch is "any" (default) or "all".
+	Tags      string
+	TagsMatch string
+	Groups    string
+	// Status: active, pending_validation, opted_out, blocked or unreachable.
+	Status   string
+	City     string
+	State    string
+	Country  string
+	Zip      string
+	Document string
+	// HasEmail: only contacts that have (true) or lack (false) an email.
+	HasEmail *bool
+	// Date filters, ISO 8601 / RFC 3339 (e.g. "2026-09-01T00:00:00Z").
+	LastActivityAfter  string
+	LastActivityBefore string
+	CreatedAfter       string
+	CreatedBefore      string
+	// Sort order (e.g. "last_activity").
+	Sort   string
+	Offset int
 }
 
 // ListInstancesParams is the optional query for ListInstances. ProjectID scopes
@@ -520,6 +633,8 @@ type ListContactsParams struct {
 // Empty uses the active project (X-Project-Id). Optional.
 type ListInstancesParams struct {
 	ProjectID string
+	// Archived lists archived numbers ("1"/"true") instead of the active ones.
+	Archived string
 }
 
 // --- Projects (numbers, inbox, keys and stats are isolated per project) ---
@@ -534,6 +649,10 @@ type Project struct {
 	IsDefault bool   `json:"is_default"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+	// APIMode is UNOFFICIAL (WhatsApp Web) or OFFICIAL (WhatsApp Cloud API);
+	// fixed at creation.
+	APIMode    string `json:"api_mode,omitempty"`
+	ArchivedAt string `json:"archived_at,omitempty"`
 }
 
 // ProjectList is the response of ListProjects.

@@ -17,6 +17,9 @@ func (c *Client) ListInstances(ctx context.Context, opts ...ListInstancesParams)
 	if len(opts) > 0 && opts[0].ProjectID != "" {
 		q.Set("project_id", opts[0].ProjectID)
 	}
+	if len(opts) > 0 && opts[0].Archived != "" {
+		q.Set("archived", opts[0].Archived)
+	}
 	var out InstanceList
 	if err := c.do(ctx, http.MethodGet, "/instances", q, nil, &out); err != nil {
 		return nil, err
@@ -122,10 +125,11 @@ func (c *Client) GetUsage(ctx context.Context, p GetUsageParams) (*UsageSummary,
 
 // --- Account contacts (captured from conversations) ---
 
-// ListContacts lists the account's contact base (captured from conversations).
-// p.ProjectID may be a project id or "current"; p.InstanceID filters by a number
-// the contact interacted with. All filters are optional.
-// GET /contacts?search=&project_id=&instance_id=&limit=.
+// ListContacts lists the account's contact base (captured from conversations
+// and created via API/import). p.ProjectID may be a project id or "current";
+// p.InstanceID filters by a number the contact interacted with; the other
+// fields filter by tags, groups, status, address, document, email and dates.
+// All filters are optional. GET /contacts.
 func (c *Client) ListContacts(ctx context.Context, p ListContactsParams) (*ContactRecordList, error) {
 	q := url.Values{}
 	if p.Search != "" {
@@ -140,6 +144,12 @@ func (c *Client) ListContacts(ctx context.Context, p ListContactsParams) (*Conta
 	if p.Limit > 0 {
 		q.Set("limit", strconv.Itoa(p.Limit))
 	}
+	newQuery().str("tags", p.Tags).str("tags_match", p.TagsMatch).str("groups", p.Groups).
+		str("status", p.Status).str("city", p.City).str("state", p.State).str("country", p.Country).
+		str("zip", p.Zip).str("document", p.Document).boolPtr("has_email", p.HasEmail).
+		str("last_activity_after", p.LastActivityAfter).str("last_activity_before", p.LastActivityBefore).
+		str("created_after", p.CreatedAfter).str("created_before", p.CreatedBefore).
+		str("sort", p.Sort).int("offset", p.Offset).mergeInto(q)
 	var out ContactRecordList
 	if err := c.do(ctx, http.MethodGet, "/contacts", q, nil, &out); err != nil {
 		return nil, err

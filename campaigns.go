@@ -15,6 +15,15 @@ type Scheduled struct {
 	ScheduledAt string `json:"scheduled_at"`
 	Status      string `json:"status"`
 	MessageID   string `json:"message_id,omitempty"`
+
+	TenantID  string `json:"tenant_id,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	// Request is the original send request. A pointer (not a map) keeps
+	// Scheduled comparable, as it was before this field existed.
+	Request   *map[string]any `json:"request,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	CreatedAt string          `json:"created_at,omitempty"`
+	UpdatedAt string          `json:"updated_at,omitempty"`
 }
 
 // ListScheduled lists pending/recent scheduled sends. GET /messages/scheduled.
@@ -68,6 +77,10 @@ type Campaign struct {
 	Waiting string `json:"waiting,omitempty"`
 	// StartsAt is when the send window reopens for this campaign (RFC 3339), set with Waiting.
 	StartsAt string `json:"starts_at,omitempty"`
+
+	TenantID  string `json:"tenant_id,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // CampaignStats are the aggregated counters of a campaign.
@@ -85,6 +98,9 @@ type CampaignStats struct {
 type CampaignDetail struct {
 	Campaign Campaign      `json:"campaign"`
 	Stats    CampaignStats `json:"stats"`
+	// Variations are the campaign template variations. A pointer (not a slice)
+	// keeps CampaignDetail comparable, as it was before this field existed.
+	Variations *[]CampaignVariation `json:"variations,omitempty"`
 }
 
 // CampaignRecipientInput is one recipient to add: phone + payload of variables.

@@ -8,8 +8,13 @@ API keys, and track usage. Built on the standard library only (`net/http` +
 ## Install
 
 ```sh
-go get github.com/bernisoftware/bzapper-go
+go get github.com/bernisoftware/bzapper-go@v0.6.2
 ```
+
+**Pin the exact version** (`@vX.Y.Z` in `go get`, which `go.mod` then records as
+`require github.com/bernisoftware/bzapper-go v0.6.2`): every release note states
+whether it changes the public surface (breaking vs additive), so upgrading is a
+deliberate decision. Zero runtime dependencies — standard library only.
 
 ```go
 import bzapper "github.com/bernisoftware/bzapper-go"
@@ -48,15 +53,29 @@ with an option: `bzapper.NewClient("bz_live_...", bzapper.WithBaseURL("http://lo
 ## Configuration
 
 `NewClient(apiKey string, opts ...Option)` returns a `*Client` that is safe
-for concurrent use. Every request sends `Authorization: Bearer <apiKey>`,
-`Content-Type: application/json` and (when set) `Accept-Language: <locale>`.
-(The older `New(baseURL, apiKey string, opts ...Option)` still exists for backward compat.)
+for concurrent use and makes no network call. (The older
+`New(baseURL, apiKey string, opts ...Option)` still exists for backward compat.)
+
+### Authentication
+
+Create the API key in the bZapper panel → **API keys** (`bz_live_...`). A key
+belongs to a **project** (numbers, inbox, contacts and stats are isolated per
+project); to act on another project with an account-wide key, pass
+`WithProjectID`. Never ship the key to a browser. An empty key makes every call
+fail with `ErrInvalidArgument` before any request.
+
+Every request sends `Authorization: Bearer <apiKey>`, `Accept: application/json`,
+`X-Bzapper-Client: bzapper-go/<Version>` (also as `User-Agent`), a per-call
+`X-Request-Id`, an `Idempotency-Key` on writes, `Content-Type: application/json`
+when there is a body, and — when configured — `Accept-Language` / `X-Project-Id`.
 
 | Option                       | Purpose                                              |
 | ---------------------------- | ---------------------------------------------------- |
 | `WithBaseURL(url)`           | Override the base URL (dev/self-host).               |
 | `WithLocale("pt-BR")`        | Sets `Accept-Language` (localizes error messages).   |
-| `WithTimeout(30*time.Second)`| Request timeout (default 30s).                       |
+| `WithTimeout(30*time.Second)`| Timeout per attempt (default 30s).                   |
+| `WithMaxRetries(2)`          | Retries after the first attempt (default 2; 0 disables). |
+| `WithProjectID(id)`          | Sends `X-Project-Id` (project scope).                |
 | `WithHTTPClient(hc)`         | Supply your own `*http.Client` (proxy, transport…).  |
 
 ```go
@@ -81,7 +100,10 @@ All message methods embed `SendBase`:
 | `QuotedParticipant` | Author (phone or JID) of the quoted/reacted message. Only needed in groups when that message isn't in bZapper history. |
 | `ClientReference` | Echoed back in status events for correlation.               |
 | `Mentions`        | Mentioned people (group messages): JIDs or plain phones (`5511...`, `+55 11 9...`). |
-| `IdempotencyKey`  | Sent as the `Idempotency-Key` header (≤255 chars). Retrying with the same key within 24h returns the same response without sending twice (`409 idempotency_in_progress`, `422 idempotency_key_reused`). |
+| `ScheduledAt`     | Future RFC 3339 time: the send is scheduled (`Status == "scheduled"`, see `ScheduledID`). |
+| `Groups` / `Tags` | Contact-group / tag keys: sends 1:1 to every ACTIVE contact in them. |
+| `Force`           | Skips the opt-out/suppression guard (transactional messages only). |
+| `IdempotencyKey`  | Sent as the `Idempotency-Key` header (≤255 chars) instead of the per-call key the SDK generates. Retrying with the same key within 24h returns the same response without sending twice (`409 idempotency_in_progress`, `422 idempotency_key_reused`). |
 
 ## Messages — one example of each type
 
@@ -159,6 +181,34 @@ res, _ := client.ConnectInstance(ctx, inst.ID, bzapper.ConnectQR)   // res.QRCod
 res, _ = client.ConnectInstance(ctx, inst.ID, bzapper.ConnectCode)  // res.PairCode
 
 client.DisconnectInstance(ctx, inst.ID)
+client.LogoutInstance(ctx, inst.ID)       // unpair (scan again to reconnect)
+client.ClearInstanceSession(ctx, inst.ID) // wipe a stuck pairing
+client.ArchiveInstance(ctx, inst.ID)      // hide; ListInstances(ctx, bzapper.ListInstancesParams{Archived: "1"})
+client.UnarchiveInstance(ctx, inst.ID)
+client.DeleteInstance(ctx, inst.ID)
+
+// Proxy, privacy and inbound filters
+client.SetInstanceProxy(ctx, inst.ID, "http://user:pass@proxy.example:8080")
+client.SetPrivacy(ctx, inst.ID, bzapper.PrivacyParams{Setting: "last", Value: "contacts"})
+yes := true
+client.SetInboundFilters(ctx, inst.ID, bzapper.InboundFilters{IgnoreGroups: &yes})
+
+// Official rail (WhatsApp Cloud API) — projects created with APIMode "OFFICIAL"
+acct, _ := client.GetOfficialAccount(ctx) // acct.Status, acct.QualityRating
+```
+
+## Message management and scheduled sends
+
+```go
+ref, _ := client.EditMessage(ctx, msgID, "texto corrigido")
+client.RevokeMessage(ctx, msgID, true) // delete for everyone
+client.ForwardMessage(ctx, bzapper.ForwardMessageParams{
+	InstanceID: inst.ID, To: "+5511988887777", FromChat: "5511977776666@s.whatsapp.net", WAMessageID: ref.WAMessageID,
+})
+client.MarkRead(ctx, msgID, bzapper.MarkReadParams{InstanceID: inst.ID, Chat: "5511977776666@s.whatsapp.net"})
+
+pending, _ := client.ListScheduledWithParams(ctx, bzapper.ListScheduledParams{Limit: 50})
+client.CancelScheduled(ctx, pending[0].ID)
 ```
 
 ## API keys
@@ -200,6 +250,7 @@ fmt.Println(created.ID, created.Secret)
 client.ListWebhooks(ctx)
 client.TestWebhook(ctx, created.ID, "message.received")
 client.WebhookDeliveries(ctx, created.ID, 20)
+client.TriggerWebhookEvent(ctx, "message.received") // sample event to every matching webhook
 
 active := false
 client.UpdateWebhook(ctx, created.ID, bzapper.UpdateWebhookParams{Active: &active})
@@ -274,6 +325,18 @@ hist, _ := client.ConversationHistory(ctx, "120363021234567890@g.us",
 client.ArchiveChat(ctx, "5511999999999@s.whatsapp.net", inst.ID, true)
 client.PinChat(ctx, "5511999999999@s.whatsapp.net", inst.ID, true)
 client.MarkChat(ctx, "5511999999999@s.whatsapp.net", inst.ID, true)
+client.MuteChat(ctx, "5511999999999@s.whatsapp.net", inst.ID, true)
+
+// Labels (WhatsApp Business)
+label, _ := client.CreateLabel(ctx, bzapper.CreateLabelParams{InstanceID: inst.ID, Name: "VIP"})
+client.ApplyChatLabel(ctx, "5511999999999@s.whatsapp.net", bzapper.ApplyChatLabelParams{
+	InstanceID: inst.ID, LabelID: label.ID, Apply: true,
+})
+
+// Block and calls
+client.BlockContact(ctx, "5511999999999@s.whatsapp.net", inst.ID)
+blocked, _ := client.GetBlocklist(ctx, inst.ID) // blocked.Data
+client.RejectCall(ctx, bzapper.RejectCallParams{InstanceID: inst.ID, CallFrom: "5511...@s.whatsapp.net", CallID: "..."})
 
 // Groups
 groups, _ := client.ListGroups(ctx, inst.ID)
@@ -288,7 +351,13 @@ client.UpdateGroupParticipants(ctx, group.JID, inst.ID, bzapper.UpdateGroupParti
 	Participants: []string{"+5511988887777"},
 })
 
-invite, _ := client.GroupInvite(ctx, group.JID, inst.ID) // invite.URL / invite.Code
+topic := "Avisos da equipe"
+client.UpdateGroup(ctx, group.JID, inst.ID, bzapper.UpdateGroupParams{Topic: &topic})
+invite, _ := client.GroupInviteLink(ctx, group.JID, bzapper.GroupInviteLinkParams{InstanceID: inst.ID}) // invite.InviteLink
+reqs, _ := client.ListJoinRequests(ctx, group.JID, inst.ID)
+client.UpdateJoinRequests(ctx, group.JID, inst.ID, bzapper.UpdateJoinRequestsParams{
+	Participants: []string{reqs.Data[0].JID}, Approve: true,
+})
 preview, _ := client.PreviewGroupInvite(ctx, inst.ID, bzapper.JoinGroupParams{Code: "AbCdEf123"}) // name/size WITHOUT joining
 client.JoinGroup(ctx, inst.ID, bzapper.JoinGroupParams{Code: "AbCdEf123"})
 client.LeaveGroup(ctx, group.JID, inst.ID)
@@ -309,6 +378,64 @@ for _, c := range res.Data {
 // Update the instance's WhatsApp profile (unset fields stay unchanged).
 name := "Suporte bZapper"
 client.SetProfile(ctx, inst.ID, bzapper.SetProfileParams{DisplayName: &name})
+
+// CRM: the project's contact base. The contact↔project/number link is
+// maintained automatically by the API — filters only read it.
+c, _ := client.CreateContact(ctx, bzapper.CreateContactParams{Phone: "+5511988887777", Name: "Ana"})
+client.MutateContactTags(ctx, c.ID, bzapper.TaxonMutation{Add: []string{"vip"}})
+client.MutateContactGroups(ctx, c.ID, bzapper.TaxonMutation{Add: []string{"clientes"}})
+client.AddContactNote(ctx, c.ID, "Pediu retorno amanhã")
+page, _ := client.ListContacts(ctx, bzapper.ListContactsParams{Tags: "vip", Status: "active", Limit: 50})
+hist, _ := client.GetContactHistory(ctx, c.ID, bzapper.ContactHistoryParams{Limit: 20})
+client.OptOutContact(ctx, c.ID) // or OptInContact / SuppressContact
+
+client.CreateTag(ctx, bzapper.CreateTaxonParams{Key: "vip", Name: "VIP", Color: "#22c55e"})
+client.CreateContactGroup(ctx, bzapper.CreateTaxonParams{Key: "clientes", Name: "Clientes"})
+client.CreateSuppression(ctx, bzapper.CreateSuppressionParams{Phone: "+5511999998888", Reason: "pediu para sair"})
+client.DeleteSuppression(ctx, "+5511999998888")
+```
+
+## Campaigns and pools
+
+```go
+pool, _ := client.CreatePool(ctx, bzapper.CreatePoolParams{Name: "vendas", Strategy: bzapper.PoolHealthWeighted})
+client.AddPoolNumber(ctx, pool.ID, inst.ID)
+elig, _ := client.GetCampaignEligibility(ctx, bzapper.CampaignEligibilityParams{PoolID: pool.ID})
+
+logo, _ := bzapper.FileFromPath("promo.png")
+media, _ := client.UploadCampaignMedia(ctx, logo) // media.URL
+
+camp, _ := client.CreateCampaign(ctx, bzapper.CampaignCreateParams{
+	Name: "Black Friday", PoolID: pool.ID, PacingProfile: "conservative",
+	Variations: []bzapper.CampaignVariation{
+		{Body: "Oi {nome}! {Oferta|Promo} só hoje", Media: map[string]any{"url": media.URL}},
+	},
+})
+client.AddCampaignRecipients(ctx, camp.ID, bzapper.CampaignRecipientsParams{
+	ContactFilter: &bzapper.ContactFilter{Tags: []string{"vip"}},
+})
+dry, _ := client.DryRunCampaign(ctx, camp.ID) // missing variables, warnings, ETA
+started, _ := client.StartCampaignWithResult(ctx, camp.ID) // started.Waiting = held by the send window
+client.PauseCampaign(ctx, camp.ID)
+recipients, _ := client.ListCampaignRecipientsWithParams(ctx, camp.ID, bzapper.ListCampaignRecipientsParams{Limit: 100})
+```
+
+## Account, projects, users, brand and billing
+
+```go
+me, _ := client.GetMe(ctx) // account, user, role, scopes
+proj, _ := client.CreateProjectWithParams(ctx, bzapper.CreateProjectParams{Name: "Loja", APIMode: "UNOFFICIAL"})
+health, _ := client.GetProjectsHealth(ctx) // numbers per status, per project
+client.SetProjectBrand(ctx, proj.ID, bzapper.BrandProfile{About: "Atendimento 8h–18h"})
+file, _ := bzapper.FileFromPath("logo.png")
+client.UploadProjectLogo(ctx, proj.ID, file)
+
+client.InviteUser(ctx, bzapper.InviteUserParams{Email: "ana@empresa.com", Role: bzapper.RoleAgent})
+
+ent, _ := client.GetMyEntitlements(ctx) // plan, limits, usage
+cart, _ := client.ChangeAddon(ctx, bzapper.ChangeAddonParams{Kind: bzapper.AddonNumber, Delta: 1})
+pay, _ := client.CheckoutAddonCart(ctx, bzapper.CheckoutAddonCartParams{}) // confirm pay.ClientSecret with Stripe.js
+invoices, _ := client.ListMyInvoices(ctx)
 ```
 
 ## bZapper Connect (partners)
@@ -457,10 +584,59 @@ apps, _ := client.ListConnectedApps(ctx) // []PartnerConnection, with PartnerNam
 client.RevokeConnectedApp(ctx, apps[0].ID) // admin; the partner's key stops working immediately
 ```
 
-## Error handling
+## Errors, retries and idempotency
 
-Non-2xx responses return a typed `*bzapper.Error`. Always branch on the stable,
-neutral `Code` — **never** parse the localized `Message`.
+Every API failure is a `*bzapper.Error` — non-2xx responses, a 2xx whose body
+is not JSON (`Code == "INVALID_RESPONSE"`) and network failures/timeouts
+(`Code == "NETWORK_ERROR"`, `StatusCode == 0`). **Branch on the stable, neutral
+`Code`** — never parse the localized `Message`. Send `RequestID` to support: it
+matches the API logs.
+
+| Field | Meaning |
+|---|---|
+| `Code` | stable code (`body.code`, else `body.error`, else `HTTP_<status>`) |
+| `Message` / `Locale` | localized text (humans only) |
+| `StatusCode` | HTTP status (0 on network errors) |
+| `Type` | `authentication` (401), `permission_denied` (403), `not_found` (404), `conflict` (409), `validation` (400/422), `rate_limit` (429), `server` (5xx), `network`, `api` (anything else) |
+| `RequestID` | response `X-Request-Id`, else the one the SDK sent |
+| `RetryAfter` | wait asked by a 429 (`Retry-After`) |
+| `RequiredScope` | scope the key lacks (403, `X-Required-Scope`) |
+| `Body` | decoded error body (structured detail) |
+
+The typed classes of the other SDKs are sentinels for `errors.Is` in Go:
+`ErrAuthentication`, `ErrPermissionDenied`, `ErrNotFound`, `ErrConflict`,
+`ErrValidation`, `ErrRateLimit`, `ErrServer`, `ErrNetwork`. Argument errors
+detected before any request (empty API key, a path parameter that is empty,
+`"."` or `".."`) match `ErrInvalidArgument` and are not `*Error`.
+
+```go
+_, err := client.GetInstance(ctx, id)
+switch {
+case errors.Is(err, bzapper.ErrNotFound):
+	// …
+case errors.Is(err, bzapper.ErrRateLimit):
+	var e *bzapper.Error
+	errors.As(err, &e)
+	log.Printf("slow down for %s (request %s)", e.RetryAfter, e.RequestID)
+}
+```
+
+**Retries.** Network errors/timeouts and `429`, `502`, `503`, `504` are retried
+automatically (`WithMaxRetries`, default 2), waiting `Retry-After` when present
+(capped at 60s) or an exponential backoff (0.5s, 1s, 2s… up to 8s, +25% jitter).
+A `500` or any `4xx` returns at once. Cancel the `ctx` to stop waiting.
+
+**Idempotency.** Every write (POST/PUT/PATCH/DELETE) carries an
+`Idempotency-Key` generated per call and **repeated on every retry** — together
+with the repeated `X-Request-Id`, that is what makes retrying a send safe (the
+API answers a repeat with the original response and `Idempotent-Replayed: true`).
+To use your own key (e.g. your order id), set `SendBase.IdempotencyKey` on the
+message sends, or for any write:
+
+```go
+ctx := bzapper.ContextWithIdempotencyKey(ctx, "order-4471")
+_, err := client.CreateContact(ctx, bzapper.CreateContactParams{Phone: "+5511988887777"})
+```
 
 ```go
 _, err := client.SendText(ctx, bzapper.SendTextParams{SendBase: to, Body: "hi"})
@@ -481,8 +657,8 @@ if err != nil {
 }
 ```
 
-`Error` fields: `Code` (stable), `Message` (localized, human-only), `Locale`,
-`StatusCode`.
+Buttons and lists may be rendered by WhatsApp as a **numbered text menu**
+fallback — design the text so it still reads well as a menu.
 
 ## Example program
 

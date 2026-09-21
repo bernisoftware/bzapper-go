@@ -1,0 +1,9 @@
+# go build / go test -c output
+/examples/examples
+*.exe
+*.test
+
+# coverage / profiles
+*.out
+coverage.*
+*.prof
