@@ -6,9 +6,14 @@ import (
 )
 
 // sendMessage posts a message-send request and decodes the queued envelope.
+// SendBase.IdempotencyKey, when set, goes in the Idempotency-Key header.
 func (c *Client) sendMessage(ctx context.Context, path string, body any) (*Message, error) {
+	var headers http.Header
+	if k, ok := body.(interface{ idempotencyKey() string }); ok && k.idempotencyKey() != "" {
+		headers = http.Header{"Idempotency-Key": {k.idempotencyKey()}}
+	}
 	var msg Message
-	if err := c.do(ctx, http.MethodPost, path, nil, body, &msg); err != nil {
+	if err := c.doWithHeaders(ctx, http.MethodPost, path, nil, headers, body, &msg); err != nil {
 		return nil, err
 	}
 	return &msg, nil

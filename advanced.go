@@ -129,6 +129,18 @@ func (c *Client) JoinGroup(ctx context.Context, instanceID string, p JoinGroupPa
 	return &out, nil
 }
 
+// PreviewGroupInvite shows the group behind an invite code (name, topic, size)
+// WITHOUT joining — to confirm before putting the number in someone else's
+// group. instanceID goes in the query; p.Code (code or link) in the body.
+// POST /groups/join/preview?instance_id=.
+func (c *Client) PreviewGroupInvite(ctx context.Context, instanceID string, p JoinGroupParams) (*Group, error) {
+	var out Group
+	if err := c.do(ctx, http.MethodPost, "/groups/join/preview", instanceQuery(instanceID), p, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // UpdateGroupParticipants adds, removes, promotes or demotes participants.
 // instanceID goes in the query; p (action, participants) in the body.
 // POST /groups/{jid}/participants?instance_id=.

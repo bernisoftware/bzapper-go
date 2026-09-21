@@ -63,6 +63,11 @@ type Campaign struct {
 	StartAt       string `json:"start_at,omitempty"`
 	PausedReason  string `json:"paused_reason,omitempty"`
 	CreatedAt     string `json:"created_at,omitempty"`
+	// Waiting is set while a scheduled/running campaign is held by the send window
+	// (08h–21h America/Sao_Paulo), e.g. "fora da janela de envio (...) — começa às 08:00 de 22/09".
+	Waiting string `json:"waiting,omitempty"`
+	// StartsAt is when the send window reopens for this campaign (RFC 3339), set with Waiting.
+	StartsAt string `json:"starts_at,omitempty"`
 }
 
 // CampaignStats are the aggregated counters of a campaign.

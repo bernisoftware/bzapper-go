@@ -26,7 +26,7 @@ var WebhookEventTypes = []string{
 	"message.received", "message.sent", "message.delivered", "message.read", "message.failed",
 	"instance.connected", "instance.disconnected", "instance.banned", "instance.logged_out",
 	"instance.warming", "instance.status",
-	"group.joined", "group.participant_added", "group.participant_removed",
+	"group.joined", "group.left", "group.participant_added", "group.participant_removed",
 	"group.participant_promoted", "group.participant_demoted",
 	"group.subject_changed", "group.description_changed",
 }
@@ -43,23 +43,39 @@ type WebhookGroup struct {
 
 // WebhookSender identifies who sent/triggered the event (message/group events).
 type WebhookSender struct {
-	JID  string `json:"jid,omitempty"`
-	LID  string `json:"lid,omitempty"`
-	Name string `json:"name,omitempty"`
+	JID string `json:"jid,omitempty"`
+	LID string `json:"lid,omitempty"`
+	// Phone is the sender's phone (+DDIdigits) when known; empty when the
+	// person only arrived by @lid and the LID→phone map doesn't know it yet.
+	Phone string `json:"phone,omitempty"`
+	Name  string `json:"name,omitempty"`
+}
+
+// WebhookConnection identifies the bZapper Connect connection an event belongs
+// to. It is only present on deliveries to a PARTNER webhook, so the partner
+// knows which of its customers the event is about.
+type WebhookConnection struct {
+	ID         string           `json:"id"`
+	ExternalID string           `json:"external_id"`
+	AccountID  string           `json:"account_id,omitempty"`
+	ProjectID  string           `json:"project_id,omitempty"`
+	Status     ConnectionStatus `json:"status"`
 }
 
 // WebhookEvent is a parsed, typed webhook event (the delivered envelope). Use ID
 // for idempotency — the API may retry deliveries.
 type WebhookEvent struct {
-	ID              string          `json:"-"`
-	Type            string          `json:"-"`
-	Timestamp       string          `json:"-"`
-	InstanceID      string          `json:"-"`
-	ClientReference string          `json:"-"`
-	Group           *WebhookGroup   `json:"-"`
-	Sender          *WebhookSender  `json:"-"`
-	Mentions        []string        `json:"-"`
-	Payload         map[string]any  `json:"-"`
+	ID              string         `json:"-"`
+	Type            string         `json:"-"`
+	Timestamp       string         `json:"-"`
+	InstanceID      string         `json:"-"`
+	ClientReference string         `json:"-"`
+	Group           *WebhookGroup  `json:"-"`
+	Sender          *WebhookSender `json:"-"`
+	Mentions        []string       `json:"-"`
+	Payload         map[string]any `json:"-"`
+	// Connection is set only on partner (bZapper Connect) deliveries; nil otherwise.
+	Connection *WebhookConnection `json:"-"`
 	// Raw is the original JSON envelope as delivered.
 	Raw json.RawMessage `json:"-"`
 }
@@ -67,15 +83,16 @@ type WebhookEvent struct {
 // webhookEnvelope mirrors the wire format (snake_case) and is mapped onto the
 // public WebhookEvent in UnmarshalJSON.
 type webhookEnvelope struct {
-	EventID         string         `json:"event_id"`
-	EventType       string         `json:"event_type"`
-	Timestamp       string         `json:"timestamp"`
-	InstanceID      string         `json:"instance_id"`
-	ClientReference string         `json:"client_reference"`
-	Group           *WebhookGroup  `json:"group"`
-	Sender          *WebhookSender `json:"sender"`
-	Mentions        []string       `json:"mentions"`
-	Payload         map[string]any `json:"payload"`
+	EventID         string             `json:"event_id"`
+	EventType       string             `json:"event_type"`
+	Timestamp       string             `json:"timestamp"`
+	InstanceID      string             `json:"instance_id"`
+	ClientReference string             `json:"client_reference"`
+	Group           *WebhookGroup      `json:"group"`
+	Sender          *WebhookSender     `json:"sender"`
+	Mentions        []string           `json:"mentions"`
+	Payload         map[string]any     `json:"payload"`
+	Connection      *WebhookConnection `json:"connection"`
 }
 
 // UnmarshalJSON maps the snake_case wire envelope onto the WebhookEvent fields
@@ -94,6 +111,7 @@ func (e *WebhookEvent) UnmarshalJSON(data []byte) error {
 	e.Sender = env.Sender
 	e.Mentions = env.Mentions
 	e.Payload = env.Payload
+	e.Connection = env.Connection
 	e.Raw = append(e.Raw[:0], data...)
 	return nil
 }

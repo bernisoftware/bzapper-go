@@ -45,9 +45,14 @@ type SendBase struct {
 	PoolID string `json:"pool_id,omitempty"`
 	// QuotedMessageID is the wa_message_id being replied to. Optional.
 	QuotedMessageID string `json:"quoted_message_id,omitempty"`
+	// QuotedParticipant is the author (phone or JID) of the quoted/reacted
+	// message. Only needed in groups when that message is not in the bZapper
+	// history (otherwise the author comes from history). Optional.
+	QuotedParticipant string `json:"quoted_participant,omitempty"`
 	// ClientReference is an end-to-end correlation id echoed back in events.
 	ClientReference string `json:"client_reference,omitempty"`
-	// Mentions are JIDs mentioned (group messages). Optional.
+	// Mentions are the people mentioned (group messages): JIDs or plain phones
+	// ("5511999999999", "+55 11 99999-9999"). Optional.
 	Mentions []string `json:"mentions,omitempty"`
 	// Sticky is conversation affinity: with no InstanceID/PoolID, reuse the
 	// number already talking to To (support). Defaults to true server-side;
@@ -57,7 +62,18 @@ type SendBase struct {
 	// picked at send time. Max lead: Free 24h, Pro 30 days, 1 year with the
 	// extended-scheduling add-on. Returns status "scheduled". OTP can't be scheduled.
 	ScheduledAt string `json:"scheduled_at,omitempty"`
+	// IdempotencyKey is sent as the Idempotency-Key header (not in the body),
+	// up to 255 chars. Repeating a send with the same key within 24h (same
+	// account) returns the SAME response without sending again — safe retries
+	// after timeouts. Same key with a different body → 422
+	// idempotency_key_reused; first call still running → 409
+	// idempotency_in_progress. Optional.
+	IdempotencyKey string `json:"-"`
 }
+
+// idempotencyKey exposes SendBase.IdempotencyKey to sendMessage through every
+// params struct that embeds SendBase.
+func (b SendBase) idempotencyKey() string { return b.IdempotencyKey }
 
 // MediaInput describes media sent by URL or by base64 (use one, never both).
 type MediaInput struct {
@@ -191,8 +207,8 @@ type Instance struct {
 	// Vazio em ban permanente (revisão no app + re-pareamento) ou sem ban.
 	BannedUntil string `json:"banned_until,omitempty"`
 	ProxyURL    string `json:"proxy_url,omitempty"`
-	CreatedAt    string         `json:"created_at,omitempty"`
-	UpdatedAt    string         `json:"updated_at,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
 
 	// ConsecutiveSendFailures counts sends rejected by WhatsApp in a row. It
 	// resets to 0 on the first accepted send. A connected number with a value
@@ -377,7 +393,11 @@ type ChatFlagResult struct {
 
 // GroupParticipant is a member of a group.
 type GroupParticipant struct {
-	JID          string `json:"jid"`
+	JID string `json:"jid"`
+	// Phone (+DDIdigits) and LID of the member, when known: in LID-addressed
+	// groups JID is the @lid and only Phone identifies the person.
+	Phone        string `json:"phone,omitempty"`
+	LID          string `json:"lid,omitempty"`
 	IsAdmin      bool   `json:"is_admin"`
 	IsSuperAdmin bool   `json:"is_super_admin"`
 }
@@ -388,6 +408,7 @@ type Group struct {
 	Name         string             `json:"name,omitempty"`
 	Topic        string             `json:"topic,omitempty"`
 	Owner        string             `json:"owner,omitempty"`
+	Size         int                `json:"size,omitempty"` // participant count
 	Participants []GroupParticipant `json:"participants,omitempty"`
 	CreatedAt    string             `json:"created_at,omitempty"`
 }

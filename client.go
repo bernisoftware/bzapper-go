@@ -28,8 +28,16 @@ import (
 	"time"
 )
 
-// Version is the SDK version.
-const Version = "0.5.0"
+// Version is the SDK version. Bumped by scripts/release-sdks.sh; the publish
+// workflow refuses to release when it disagrees with the git tag (the tag is
+// the source of truth for Go modules).
+//
+// Not cosmetic: it goes in the X-Bzapper-Client header of every request, which
+// is how the API knows who to warn when a fix requires updating integration code.
+const Version = "0.6.2"
+
+// ClientID identifies the SDK and version to the API (X-Bzapper-Client / User-Agent).
+const ClientID = "bzapper-go/" + Version
 
 // DefaultBaseURL is the production API. NewClient uses it by default; override
 // only in dev/self-host via WithBaseURL (or the New(baseURL, ...) constructor).
@@ -117,6 +125,11 @@ func New(baseURL, apiKey string, opts ...Option) *Client {
 // response, out (when non-nil) is JSON-decoded from the body. On a non-2xx
 // response a *Error is returned.
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, out any) error {
+	return c.doWithHeaders(ctx, method, path, query, nil, body, out)
+}
+
+// doWithHeaders is do with extra request headers (e.g. Idempotency-Key).
+func (c *Client) doWithHeaders(ctx context.Context, method, path string, query url.Values, headers http.Header, body, out any) error {
 	endpoint := c.baseURL + path
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
@@ -138,11 +151,20 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Accept", "application/json")
+	// Identifica SDK e versão para a API — é por ele que avisamos você quando a
+	// versão que roda tem correção que exige atualizar o código.
+	req.Header.Set("X-Bzapper-Client", ClientID)
+	req.Header.Set("User-Agent", ClientID)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if c.locale != "" {
 		req.Header.Set("Accept-Language", c.locale)
+	}
+	for k, vs := range headers {
+		for _, v := range vs {
+			req.Header.Set(k, v)
+		}
 	}
 
 	resp, err := c.httpClient.Do(req)

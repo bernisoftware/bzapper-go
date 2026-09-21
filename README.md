@@ -78,8 +78,10 @@ All message methods embed `SendBase`:
 | `InstanceID`      | **Optional.** Force a specific number (bypasses rotation). Omit to auto-pick (rotation). |
 | `PoolID`          | Rotate within a pool (when `InstanceID` is empty).          |
 | `QuotedMessageID` | `wa_message_id` to reply to.                                |
+| `QuotedParticipant` | Author (phone or JID) of the quoted/reacted message. Only needed in groups when that message isn't in bZapper history. |
 | `ClientReference` | Echoed back in status events for correlation.               |
-| `Mentions`        | JIDs mentioned (group messages).                            |
+| `Mentions`        | Mentioned people (group messages): JIDs or plain phones (`5511...`, `+55 11 9...`). |
+| `IdempotencyKey`  | Sent as the `Idempotency-Key` header (≤255 chars). Retrying with the same key within 24h returns the same response without sending twice (`409 idempotency_in_progress`, `422 idempotency_key_reused`). |
 
 ## Messages — one example of each type
 
@@ -287,6 +289,7 @@ client.UpdateGroupParticipants(ctx, group.JID, inst.ID, bzapper.UpdateGroupParti
 })
 
 invite, _ := client.GroupInvite(ctx, group.JID, inst.ID) // invite.URL / invite.Code
+preview, _ := client.PreviewGroupInvite(ctx, inst.ID, bzapper.JoinGroupParams{Code: "AbCdEf123"}) // name/size WITHOUT joining
 client.JoinGroup(ctx, inst.ID, bzapper.JoinGroupParams{Code: "AbCdEf123"})
 client.LeaveGroup(ctx, group.JID, inst.ID)
 ```
@@ -306,6 +309,152 @@ for _, c := range res.Data {
 // Update the instance's WhatsApp profile (unset fields stay unchanged).
 name := "Suporte bZapper"
 client.SetProfile(ctx, inst.ID, bzapper.SetProfileParams{DisplayName: &name})
+```
+
+## bZapper Connect (partners)
+
+For **partner software** that lets its own customers subscribe to bZapper Pro and
+connect WhatsApp without leaving the partner's product. The flow:
+
+1. Your **backend** creates a session with the partner secret (`bz_partner_...`).
+2. Your front-end opens the embedded component with the `session_token`.
+3. When the customer finishes (Pro paid + number connected), the component emits a
+   one-time `code` (valid 10 min). Your front-end sends it to your backend.
+4. Your backend exchanges the `code` for the customer's API key (`bz_live_...`) and
+   uses the regular `Client` with it.
+
+The partner secret authenticates with the same `Authorization: Bearer` header as an
+API key, but only on `/partner/*`. **Never** send it to a browser.
+
+```go
+partner := bzapper.NewPartnerClient(os.Getenv("BZAPPER_PARTNER_SECRET"))
+
+// 1) Your front-end asks your backend to open Connect for the logged-in customer.
+http.HandleFunc("/bzapper/session", func(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r) // your own auth
+	s, err := partner.CreateConnectSession(r.Context(), bzapper.CreateConnectSessionParams{
+		ExternalID: u.CustomerID, // YOUR id — same id = same connection
+		Customer: bzapper.ConnectCustomer{
+			Name:    u.Name,
+			Email:   u.Email,        // required (plus Name or Company)
+			Phone:   u.Phone,        // optional, E.164 — pre-fills the number
+			Company: u.CompanyName,  // optional — becomes the account/project name
+			Country: "BR",           // optional, ISO-3166 alpha-2 — sets the currency
+		},
+		Locale: "pt-BR",
+	})
+	if err != nil {
+		http.Error(w, "connect unavailable", http.StatusBadGateway)
+		return
+	}
+	// 2) Only the short-lived (30 min) session token goes to the browser.
+	json.NewEncoder(w).Encode(map[string]string{"session": s.SessionToken})
+})
+
+// 3) The component finished: exchange the one-time code for the customer's key.
+http.HandleFunc("/bzapper/exchange", func(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Code string `json:"code"` }
+	json.NewDecoder(r.Body).Decode(&in)
+
+	conn, err := partner.ExchangeCode(r.Context(), in.Code)
+	if err != nil {
+		var apiErr *bzapper.Error
+		if errors.As(err, &apiErr) && apiErr.Code == "invalid_code" {
+			http.Error(w, "code expired or already used", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "exchange failed", http.StatusBadGateway)
+		return
+	}
+	// conn.APIKey is shown ONLY ONCE — store it (encrypted) against conn.ExternalID.
+	// Lost it? partner.RotateConnectionKey(ctx, conn.ID) issues a new one.
+	saveKey(conn.ExternalID, conn.ID, conn.APIKey)
+	w.WriteHeader(http.StatusNoContent)
+})
+
+// 4) From now on, act on the customer's WhatsApp with the regular client.
+client := bzapper.NewClient(loadKey("cust-42"))
+_, err := client.SendText(ctx, bzapper.SendTextParams{
+	SendBase: bzapper.SendBase{To: "+5511999999999"},
+	Body:     "Olá!",
+})
+var apiErr *bzapper.Error
+if errors.As(err, &apiErr) {
+	switch apiErr.Code {
+	case bzapper.ErrCodeConnectSuspended: // HTTP 402
+		// The customer's Pro is unpaid. Do not retry in a loop: the key resumes
+		// by itself once paid (you receive connect.resumed).
+	case bzapper.ErrCodeConnectRevoked: // HTTP 401
+		// The connection was ended — drop the key and offer to connect again.
+	}
+}
+```
+
+The key is scoped to the customer's project: it operates numbers and messages, but
+cannot touch billing, users, keys or webhooks of the account.
+
+### Managing connections
+
+```go
+me, _ := partner.Me(ctx) // who the secret belongs to
+
+list, _ := partner.ListConnections(ctx, bzapper.ListConnectionsParams{
+	ExternalID: "cust-42",                  // optional
+	Status:     bzapper.ConnectionSuspended, // optional
+})
+conn, _ := partner.GetConnection(ctx, list[0].ID) // status, account, project, numbers
+
+rotated, _ := partner.RotateConnectionKey(ctx, conn.ID) // previous key stops working
+fmt.Println(rotated.APIKey)                              // 409 connection_not_active if not completed/revoked
+
+partner.RevokeConnection(ctx, conn.ID) // 204; revokes the key, does NOT cancel the customer's plan
+```
+
+Connection status (`bzapper.ConnectionStatus`): `ConnectionPendingAccount`,
+`ConnectionPendingPayment`, `ConnectionPendingNumber`, `ConnectionActive`,
+`ConnectionSuspended` (key answers 402 `connect_suspended`), `ConnectionRevoked`.
+
+### Partner webhooks
+
+Deliveries to the partner's webhook use the **same** signature scheme
+(`X-Bzapper-Signature: sha256=<hex>` over the raw body), so `WebhookReceiver`,
+`VerifyWebhook` and `ConstructWebhookEvent` work unchanged. The envelope carries an
+extra `connection` block, exposed as `e.Connection` (nil on regular deliveries),
+telling you which of your customers the event is about. Besides the lifecycle events
+below, you also receive the regular project events (`message.*`, `instance.*`…) of
+every active connection — except QR/pairing codes.
+
+```go
+secret := os.Getenv("BZAPPER_PARTNER_WEBHOOK_SECRET")
+
+http.Handle("/webhooks/bzapper", bzapper.NewWebhookReceiver(secret).
+	On(bzapper.EventConnectCompleted, func(e *bzapper.WebhookEvent) {
+		markConnected(e.Connection.ExternalID, e.Connection.ID)
+	}).
+	On(bzapper.EventConnectSuspended, func(e *bzapper.WebhookEvent) {
+		pauseWhatsApp(e.Connection.ExternalID) // key now answers 402 connect_suspended
+	}).
+	On(bzapper.EventConnectResumed, func(e *bzapper.WebhookEvent) {
+		resumeWhatsApp(e.Connection.ExternalID)
+	}).
+	On(bzapper.EventConnectRevoked, func(e *bzapper.WebhookEvent) {
+		deleteKey(e.Connection.ExternalID) // the key never works again
+	}).
+	On("message.received", func(e *bzapper.WebhookEvent) {
+		routeInbound(e.Connection.ExternalID, e)
+	}))
+```
+
+`e.Connection` has `ID`, `ExternalID`, `AccountID`, `ProjectID` and `Status`. Dedupe
+on `e.ID`, as with any webhook.
+
+### Customer side: connected apps
+
+With the customer's own API key, list and disconnect partner apps using the account:
+
+```go
+apps, _ := client.ListConnectedApps(ctx) // []PartnerConnection, with PartnerName / PartnerLogoURL
+client.RevokeConnectedApp(ctx, apps[0].ID) // admin; the partner's key stops working immediately
 ```
 
 ## Error handling
