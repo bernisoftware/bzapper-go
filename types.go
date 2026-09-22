@@ -292,6 +292,11 @@ type APIKey struct {
 	CreatedAt  string   `json:"created_at,omitempty"`
 	LastUsedAt *string  `json:"last_used_at,omitempty"`
 	RevokedAt  *string  `json:"revoked_at,omitempty"`
+	// ProjectID is the project the key belongs to.
+	ProjectID string `json:"project_id,omitempty"`
+	// PartnerConnectionID is set when the key was issued to a partner via
+	// bZapper Connect.
+	PartnerConnectionID *string `json:"partner_connection_id,omitempty"`
 }
 
 // APIKeyList is the response of ListKeys.

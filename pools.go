@@ -100,6 +100,13 @@ type CampaignMedia struct {
 	URL string `json:"url"`
 }
 
+// CampaignStatusChange is the response of Pause/Resume/CancelCampaignWithResult.
+// Status is "paused", "running" or "canceled".
+type CampaignStatusChange struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
 // CampaignStartResult is the response of StartCampaignWithResult.
 type CampaignStartResult struct {
 	ID      string `json:"id"`
@@ -184,6 +191,24 @@ func (c *Client) UploadCampaignMedia(ctx context.Context, file UploadFile) (*Cam
 		return nil, err
 	}
 	return call[CampaignMedia](ctx, c, r)
+}
+
+// PauseCampaignWithResult pauses the campaign and returns its new state —
+// PauseCampaign(ctx, id) remains and discards it. POST /campaigns/{id}/pause.
+func (c *Client) PauseCampaignWithResult(ctx context.Context, id string) (*CampaignStatusChange, error) {
+	return call[CampaignStatusChange](ctx, c, apiRequest{method: http.MethodPost, path: "/campaigns/" + seg(id) + "/pause"})
+}
+
+// ResumeCampaignWithResult resumes the campaign and returns its new state —
+// ResumeCampaign(ctx, id) remains and discards it. POST /campaigns/{id}/resume.
+func (c *Client) ResumeCampaignWithResult(ctx context.Context, id string) (*CampaignStatusChange, error) {
+	return call[CampaignStatusChange](ctx, c, apiRequest{method: http.MethodPost, path: "/campaigns/" + seg(id) + "/resume"})
+}
+
+// CancelCampaignWithResult cancels the campaign and returns its new state —
+// CancelCampaign(ctx, id) remains and discards it. POST /campaigns/{id}/cancel.
+func (c *Client) CancelCampaignWithResult(ctx context.Context, id string) (*CampaignStatusChange, error) {
+	return call[CampaignStatusChange](ctx, c, apiRequest{method: http.MethodPost, path: "/campaigns/" + seg(id) + "/cancel"})
 }
 
 // StartCampaignWithResult starts (or schedules) the campaign and returns its

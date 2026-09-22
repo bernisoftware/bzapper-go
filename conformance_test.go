@@ -607,13 +607,13 @@ var conformanceOps = map[string]opFunc{
 		return ret(c.StartCampaignWithResult(ctx, a.path("id")))
 	},
 	"pauseCampaign": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
-		return none(c.PauseCampaign(ctx, a.path("id")))
+		return ret(c.PauseCampaignWithResult(ctx, a.path("id")))
 	},
 	"resumeCampaign": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
-		return none(c.ResumeCampaign(ctx, a.path("id")))
+		return ret(c.ResumeCampaignWithResult(ctx, a.path("id")))
 	},
 	"cancelCampaign": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
-		return none(c.CancelCampaign(ctx, a.path("id")))
+		return ret(c.CancelCampaignWithResult(ctx, a.path("id")))
 	},
 	"dryRunCampaign": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.DryRunCampaign(ctx, a.path("id")))

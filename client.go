@@ -30,7 +30,7 @@ import (
 //
 // Not cosmetic: it goes in the X-Bzapper-Client header of every request, which
 // is how the API knows who to warn when a fix requires updating integration code.
-const Version = "0.7.0"
+const Version = "0.7.1"
 
 // ClientID identifies the SDK and version to the API (X-Bzapper-Client / User-Agent).
 const ClientID = "bzapper-go/" + Version
