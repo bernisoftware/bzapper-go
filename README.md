@@ -8,11 +8,11 @@ API keys, and track usage. Built on the standard library only (`net/http` +
 ## Install
 
 ```sh
-go get github.com/bernisoftware/bzapper-go@v0.8.0
+go get github.com/bernisoftware/bzapper-go@v0.8.1
 ```
 
 **Pin the exact version** (`@vX.Y.Z` in `go get`, which `go.mod` then records as
-`require github.com/bernisoftware/bzapper-go v0.8.0`): every release note states
+`require github.com/bernisoftware/bzapper-go v0.8.1`): every release note states
 whether it changes the public surface (breaking vs additive), so upgrading is a
 deliberate decision. Zero runtime dependencies — standard library only.
 
