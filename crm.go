@@ -41,6 +41,89 @@ type UpdateContactParams struct {
 	Address      *ContactAddress `json:"address,omitempty"`
 }
 
+// --- Bulk import / CSV export ---
+
+// ContactImportRow is one row of ImportContacts. Phone is required; a blank
+// field never erases what the contact already has. Tags and Groups are tag /
+// contact-group keys, created on demand.
+type ContactImportRow struct {
+	Phone        string          `json:"phone"`
+	Name         string          `json:"name,omitempty"`
+	Email        string          `json:"email,omitempty"`
+	Document     string          `json:"document,omitempty"`
+	DocumentType string          `json:"document_type,omitempty"`
+	Address      *ContactAddress `json:"address,omitempty"`
+	Tags         []string        `json:"tags,omitempty"`
+	Groups       []string        `json:"groups,omitempty"`
+}
+
+// ImportContactsParams is the request for ImportContacts: up to 1000 rows
+// (more is 422 import_too_large). DryRun validates everything and writes
+// nothing.
+type ImportContactsParams struct {
+	Contacts []ContactImportRow `json:"contacts"`
+	DryRun   bool               `json:"dry_run,omitempty"`
+}
+
+// ContactImportRowIssue is one row the import skipped or failed. Index is its
+// position in the sent slice. Reason is a stable code — errors:
+// phone_required, invalid_phone, invalid_email, write_failed, taxonomy_failed;
+// skips: duplicate_phone, suppressed, opted_out, blocked, unreachable, deleted.
+type ContactImportRowIssue struct {
+	Index  int    `json:"index"`
+	Phone  string `json:"phone,omitempty"`
+	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// ContactImportResult is the per-row outcome of ImportContacts. A bad row lands
+// in Errors (or SkippedRows) and does NOT fail the rest of the call — always
+// read both.
+type ContactImportResult struct {
+	DryRun  bool `json:"dry_run,omitempty"`
+	Total   int  `json:"total"`
+	Created int  `json:"created"`
+	Updated int  `json:"updated"`
+	Skipped int  `json:"skipped"`
+	Failed  int  `json:"failed"`
+	// SkippedRows are rows deliberately left alone (a suppressed, opted-out or
+	// blocked contact is never resurrected by an import).
+	SkippedRows []ContactImportRowIssue `json:"skipped_rows,omitempty"`
+	Errors      []ContactImportRowIssue `json:"errors,omitempty"`
+}
+
+// ExportContactsParams is the query of ExportContacts — the SAME filters as
+// ListContactsParams (minus the pagination offset). All optional; Limit caps
+// the exported rows (maximum 100000).
+type ExportContactsParams struct {
+	Search     string
+	ProjectID  string
+	InstanceID string
+	Limit      int
+
+	// Tags / Groups filter by tag / contact-group keys, comma-separated
+	// ("vip,lead" — the wire format). TagsMatch is "any" (default) or "all".
+	Tags      string
+	TagsMatch string
+	Groups    string
+	// Status: active, pending_validation, opted_out, blocked or unreachable.
+	Status   string
+	City     string
+	State    string
+	Country  string
+	Zip      string
+	Document string
+	// HasEmail: only contacts that have (true) or lack (false) an email.
+	HasEmail *bool
+	// Date filters, ISO 8601 / RFC 3339 (e.g. "2026-09-01T00:00:00Z").
+	LastActivityAfter  string
+	LastActivityBefore string
+	CreatedAfter       string
+	CreatedBefore      string
+	// Sort order: last_activity (default), name or created.
+	Sort string
+}
+
 // ContactHistoryItem is one entry of a contact timeline (a message or an event).
 type ContactHistoryItem struct {
 	Kind      string         `json:"kind"` // "message" | "event"
@@ -124,6 +207,47 @@ type CreateSuppressionParams struct {
 // CreateContact creates a contact in the project. POST /contacts.
 func (c *Client) CreateContact(ctx context.Context, p CreateContactParams) (*ContactRecord, error) {
 	return call[ContactRecord](ctx, c, apiRequest{method: http.MethodPost, path: "/contacts", body: p})
+}
+
+// ImportContacts upserts up to 1000 contacts by phone in one call. A new
+// contact is created with source "import" and status "pending_validation" (it
+// still needs opt-in before a campaign); an existing one has only the informed
+// fields updated. A suppressed, opted-out or blocked contact is reported in
+// ContactImportResult.SkippedRows and never resurrected; a bad row lands in
+// Errors and does not fail the rest of the call. Set p.DryRun to validate
+// without writing. POST /contacts/import.
+//
+//	res, err := client.ImportContacts(ctx, bzapper.ImportContactsParams{
+//		Contacts: []bzapper.ContactImportRow{{Phone: "+5511999990000", Name: "Ana", Tags: []string{"vip"}}},
+//		DryRun:   true,
+//	})
+func (c *Client) ImportContacts(ctx context.Context, p ImportContactsParams) (*ContactImportResult, error) {
+	return call[ContactImportResult](ctx, c, apiRequest{method: http.MethodPost, path: "/contacts/import", body: p})
+}
+
+// ExportContacts exports the contact base as CSV and returns the file as TEXT —
+// this endpoint answers text/csv, not JSON, so the SDK hands you the raw
+// document (columns phone,name,email,status,source,tags,groups,created_at,
+// last_activity_at; tags and groups ";"-joined; timestamps RFC 3339 UTC). The
+// filters are the same as ListContacts. GET /contacts/export.
+//
+//	csvText, err := client.ExportContacts(ctx, bzapper.ExportContactsParams{Tags: "vip", Limit: 5000})
+//	if err != nil {
+//		return err
+//	}
+//	os.WriteFile("contacts.csv", []byte(csvText), 0o644)
+//
+// The body is read in full into the string; for a very large base cap it with
+// p.Limit (maximum 100000 rows).
+func (c *Client) ExportContacts(ctx context.Context, p ExportContactsParams) (string, error) {
+	q := newQuery().str("search", p.Search).str("project_id", p.ProjectID).str("instance_id", p.InstanceID).
+		int("limit", p.Limit).str("tags", p.Tags).str("tags_match", p.TagsMatch).str("groups", p.Groups).
+		str("status", p.Status).str("city", p.City).str("state", p.State).str("country", p.Country).
+		str("zip", p.Zip).str("document", p.Document).boolPtr("has_email", p.HasEmail).
+		str("last_activity_after", p.LastActivityAfter).str("last_activity_before", p.LastActivityBefore).
+		str("created_after", p.CreatedAfter).str("created_before", p.CreatedBefore).
+		str("sort", p.Sort).values()
+	return callText(ctx, c, apiRequest{method: http.MethodGet, path: "/contacts/export", query: q, accept: "text/csv"})
 }
 
 // GetContact fetches a contact. GET /contacts/{id}.

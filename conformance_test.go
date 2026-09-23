@@ -516,6 +516,9 @@ var conformanceOps = map[string]opFunc{
 	"createContact": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.CreateContact(ctx, body[CreateContactParams](a)))
 	},
+	"importContacts": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ImportContacts(ctx, body[ImportContactsParams](a)))
+	},
 	"getContact": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.GetContact(ctx, a.path("id")))
 	},
@@ -680,6 +683,9 @@ var conformanceOps = map[string]opFunc{
 	},
 	"revokeMyKey": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return none(c.RevokeKey(ctx, a.path("id")))
+	},
+	"rotateMyKey": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.RotateKey(ctx, a.path("id"), body[RotateKeyParams](a)))
 	},
 	"listProjects": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.ListProjects(ctx))

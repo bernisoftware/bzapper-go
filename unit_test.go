@@ -8,7 +8,9 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -453,5 +455,175 @@ func TestListContactsSendsEveryFilter(t *testing.T) {
 	q := fs.recorded()[0].Query
 	if q.Get("tags") != "vip,lead" || q.Get("has_email") != "false" || q.Get("offset") != "20" || q.Has("groups") {
 		t.Errorf("query %v", q)
+	}
+}
+
+// ── CSV export (out of the generated cases: it is not JSON — BRIEF §6) ───────
+
+// The CSV of the fixture has what breaks a naive implementation: a field with a
+// comma and doubled quotes, an empty field, a trailing newline — and it is not
+// valid JSON.
+const exportCSVFixture = "phone,name,email,status,source,tags,groups,created_at,last_activity_at\n" +
+	"+5511999990000,Ana,ana@example.com,active,import,vip;lead,,2026-09-01T12:00:00Z,2026-09-20T08:30:00Z\n" +
+	"+5511888880000,\"Silva, Maria \"\"Bia\"\"\",,pending_validation,widget,,clientes,2026-09-02T12:00:00Z,\n"
+
+func TestExportContactsReturnsRawCSV(t *testing.T) {
+	fs := newFakeServer(t)
+	c, _ := fakeClient(t, fs, []fakeResponse{textResp(200, exportCSVFixture, map[string]string{
+		"Content-Type":        "text/csv; charset=utf-8",
+		"Content-Disposition": `attachment; filename="contacts.csv"`,
+	})})
+	no := false
+	got, err := c.ExportContacts(context.Background(), ExportContactsParams{
+		Search: "ana", Tags: "vip,lead", TagsMatch: "all", Groups: "clientes", Status: "active",
+		City: "São Paulo", State: "SP", Country: "BR", Zip: "01310-000", Document: "12345678901",
+		HasEmail: &no, ProjectID: "current", InstanceID: "11111111-1111-4111-8111-111111111111",
+		LastActivityAfter: "2026-09-01T00:00:00Z", LastActivityBefore: "2026-09-30T00:00:00Z",
+		CreatedAfter: "2026-01-01T00:00:00Z", CreatedBefore: "2026-12-31T00:00:00Z",
+		Sort: "name", Limit: 5000,
+	})
+	if err != nil {
+		t.Fatalf("ExportContacts: %v", err)
+	}
+	// The text comes back byte for byte — no trimming, no re-quoting.
+	if got != exportCSVFixture {
+		t.Errorf("CSV came back changed:\n%q\nexpected:\n%q", got, exportCSVFixture)
+	}
+
+	reqs := fs.recorded()
+	if len(reqs) != 1 {
+		t.Fatalf("%d requests, expected 1", len(reqs))
+	}
+	r := reqs[0]
+	if r.Method != http.MethodGet || r.Path != "/contacts/export" {
+		t.Errorf("%s %s, expected GET /contacts/export", r.Method, r.Path)
+	}
+	// A GET is not a write: no Idempotency-Key. And the SDK asks for CSV, not JSON —
+	// this is what keeps the body out of the JSON path (a JSON Accept would make
+	// this very body an INVALID_RESPONSE).
+	if accept := r.Header.Get("Accept"); accept != "text/csv" {
+		t.Errorf("Accept %q, expected text/csv", accept)
+	}
+	if r.has("Idempotency-Key") {
+		t.Error("GET /contacts/export must not send Idempotency-Key")
+	}
+	if r.Header.Get("X-Request-Id") == "" {
+		t.Error("X-Request-Id missing")
+	}
+	// The same filters as listContacts, minus the offset (the export has none).
+	want := url.Values{
+		"search": {"ana"}, "tags": {"vip,lead"}, "tags_match": {"all"}, "groups": {"clientes"},
+		"status": {"active"}, "city": {"São Paulo"}, "state": {"SP"}, "country": {"BR"},
+		"zip": {"01310-000"}, "document": {"12345678901"}, "has_email": {"false"},
+		"project_id": {"current"}, "instance_id": {"11111111-1111-4111-8111-111111111111"},
+		"last_activity_after": {"2026-09-01T00:00:00Z"}, "last_activity_before": {"2026-09-30T00:00:00Z"},
+		"created_after": {"2026-01-01T00:00:00Z"}, "created_before": {"2026-12-31T00:00:00Z"},
+		"sort": {"name"}, "limit": {"5000"},
+	}
+	if !reflect.DeepEqual(r.Query, want) {
+		t.Errorf("query %v, expected %v", r.Query, want)
+	}
+	if strings.Contains(r.RawQuery, "offset") {
+		t.Errorf("the export has no offset parameter: %q", r.RawQuery)
+	}
+}
+
+// Empty params send no query at all, and an error answer is still a typed
+// *Error with the API code (the JSON error body is decoded as usual).
+func TestExportContactsNoFiltersAndErrors(t *testing.T) {
+	fs := newFakeServer(t)
+	c, _ := fakeClient(t, fs, []fakeResponse{
+		textResp(200, "phone,name\n", map[string]string{"Content-Type": "text/csv"}),
+		jsonResp(401, `{"code":"invalid_api_key","message":"chave inválida"}`, nil),
+	})
+	if _, err := c.ExportContacts(context.Background(), ExportContactsParams{}); err != nil {
+		t.Fatalf("ExportContacts: %v", err)
+	}
+	if raw := fs.recorded()[0].RawQuery; raw != "" {
+		t.Errorf("query %q, expected none", raw)
+	}
+	got, err := c.ExportContacts(context.Background(), ExportContactsParams{})
+	if got != "" {
+		t.Errorf("error returned text: %q", got)
+	}
+	var apiErr *Error
+	if !errors.As(err, &apiErr) || !errors.Is(err, ErrAuthentication) || apiErr.Code != "invalid_api_key" {
+		t.Fatalf("expected 401 invalid_api_key, got %v", err)
+	}
+}
+
+func TestImportContactsSendsRowsAndReadsPerRowOutcome(t *testing.T) {
+	fs := newFakeServer(t)
+	c, _ := fakeClient(t, fs, []fakeResponse{jsonResp(200, `{"dry_run":true,"total":2,"created":1,"updated":0,
+		"skipped":1,"failed":0,"skipped_rows":[{"index":1,"phone":"5511888880000","reason":"opted_out"}]}`, nil)})
+	res, err := c.ImportContacts(context.Background(), ImportContactsParams{
+		DryRun: true,
+		Contacts: []ContactImportRow{
+			{Phone: "+5511999990000", Name: "Ana", Tags: []string{"vip"}, Address: &ContactAddress{City: "São Paulo"}},
+			{Phone: "5511888880000"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ImportContacts: %v", err)
+	}
+	if !res.DryRun || res.Total != 2 || res.Created != 1 || res.Skipped != 1 || len(res.SkippedRows) != 1 ||
+		res.SkippedRows[0].Reason != "opted_out" || res.SkippedRows[0].Index != 1 {
+		t.Errorf("result %+v", res)
+	}
+	r := fs.recorded()[0]
+	if r.Method != http.MethodPost || r.Path != "/contacts/import" {
+		t.Errorf("%s %s", r.Method, r.Path)
+	}
+	if r.Header.Get("Idempotency-Key") == "" {
+		t.Error("an import is a write: needs Idempotency-Key")
+	}
+	// Only what the caller filled goes on the wire (BRIEF §3).
+	var sent map[string]any
+	if err := json.Unmarshal(r.Body, &sent); err != nil {
+		t.Fatalf("body: %v", err)
+	}
+	rows, _ := sent["contacts"].([]any)
+	if len(rows) != 2 || sent["dry_run"] != true {
+		t.Fatalf("body %s", r.Body)
+	}
+	if second, _ := rows[1].(map[string]any); len(second) != 1 || second["phone"] != "5511888880000" {
+		t.Errorf("row without optional fields went as %v", second)
+	}
+}
+
+func TestRotateKeyGracePeriod(t *testing.T) {
+	fs := newFakeServer(t)
+	c, _ := fakeClient(t, fs, []fakeResponse{
+		jsonResp(200, `{"api_key":"bz_live_new","key":{"id":"k2","tenant_id":"t1","role":"admin"},
+			"previous_key":{"id":"k1","tenant_id":"t1","role":"admin","expires_at":"2026-09-23T12:00:00Z","rotated_to":"k2"},
+			"old_key_expires_at":"2026-09-23T12:00:00Z"}`, nil),
+		jsonResp(200, `{"api_key":"bz_live_new","key":{"id":"k3","tenant_id":"t1","role":"admin"}}`, nil),
+	})
+	now := 0
+	rot, err := c.RotateKey(context.Background(), "k1", RotateKeyParams{RevokeInSeconds: &now})
+	if err != nil {
+		t.Fatalf("RotateKey: %v", err)
+	}
+	if rot.APIKey != "bz_live_new" || rot.PreviousKey == nil || rot.PreviousKey.RotatedTo != "k2" ||
+		rot.PreviousKey.ExpiresAt == nil || *rot.OldKeyExpiresAt != "2026-09-23T12:00:00Z" {
+		t.Errorf("result %+v", rot)
+	}
+	r := fs.recorded()[0]
+	if r.Method != http.MethodPost || r.Path != "/keys/k1/rotate" {
+		t.Errorf("%s %s", r.Method, r.Path)
+	}
+	// 0 is meaningful (revoke now), so it MUST be sent.
+	if strings.TrimSpace(string(r.Body)) != `{"revoke_in_seconds":0}` {
+		t.Errorf("body %s", r.Body)
+	}
+	// No grace period informed = empty body, the API applies its default.
+	if _, err := c.RotateKey(context.Background(), "k3", RotateKeyParams{}); err != nil {
+		t.Fatalf("RotateKey without params: %v", err)
+	}
+	if body := strings.TrimSpace(string(fs.recorded()[1].Body)); body != "{}" {
+		t.Errorf("body %s, expected {}", body)
+	}
+	if _, err := c.RotateKey(context.Background(), "", RotateKeyParams{}); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("empty id: %v", err)
 	}
 }

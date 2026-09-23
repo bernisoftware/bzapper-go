@@ -104,6 +104,28 @@ func (c *Client) RevokeKey(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/keys/"+url.PathEscape(id), nil, nil, nil)
 }
 
+// RotateKey rotates an API key: creates a NEW key inheriting the old one's
+// role, scopes, project and name, and keeps the OLD one working for a grace
+// period, so a running integration does not break mid-deploy. The raw new key
+// in APIKeyRotated.APIKey is shown ONLY ONCE.
+//
+// p.RevokeInSeconds is that grace period (nil = the API default of 24h, a
+// pointer to 0 revokes the old key immediately, maximum 30 days); after the
+// deadline the old key answers 401 key_expired. Admin only (403
+// admin_required); 409 key_already_revoked / key_already_expired when there is
+// nothing left to rotate. Partner keys (bZapper Connect) rotate through
+// PartnerClient.RotateConnectionKey instead. POST /keys/{id}/rotate.
+//
+//	grace := 3600
+//	rot, err := client.RotateKey(ctx, key.ID, bzapper.RotateKeyParams{RevokeInSeconds: &grace})
+func (c *Client) RotateKey(ctx context.Context, id string, p RotateKeyParams) (*APIKeyRotated, error) {
+	var out APIKeyRotated
+	if err := c.do(ctx, http.MethodPost, "/keys/"+url.PathEscape(id)+"/rotate", nil, p, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // --- Usage ---
 
 // GetUsage returns the tenant's usage summary for an optional date range

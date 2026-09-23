@@ -35,6 +35,10 @@ type apiRequest struct {
 	// raw + contentType carry a pre-encoded body (multipart uploads).
 	raw         []byte
 	contentType string
+	// accept overrides the Accept header (empty = application/json). When it is
+	// not a JSON media type the 2xx body is NOT parsed nor validated as JSON —
+	// that is how the CSV endpoints (ExportContacts) are read (BRIEF §6).
+	accept string
 	// idempotencyKey is the caller's key (empty = generated on writes).
 	idempotencyKey string
 }
@@ -70,6 +74,9 @@ type response struct {
 	status    int
 	requestID string
 	body      []byte // trimmed; empty = no content
+	// rawBody is the body exactly as received (not trimmed) — what the text
+	// responses (CSV) must return byte for byte.
+	rawBody []byte
 }
 
 // do performs a request. body is JSON-encoded when non-nil. On a 2xx response,
@@ -117,6 +124,19 @@ func call[T any](ctx context.Context, c *Client, r apiRequest) (*T, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// callText performs the request and returns the response body as text, exactly
+// as it came on the wire — no JSON parsing. It is how the endpoints that answer
+// text/csv are read (ExportContacts): for them a non-JSON 2xx is the expected
+// answer, not an INVALID_RESPONSE (BRIEF §6). Errors (non-2xx) still come back
+// as *Error with the API code, decoded from the JSON error body.
+func callText(ctx context.Context, c *Client, r apiRequest) (string, error) {
+	resp, err := c.send(ctx, r)
+	if err != nil {
+		return "", err
+	}
+	return string(resp.rawBody), nil
 }
 
 // exec performs the request and discards the body (still validated as JSON).
@@ -175,7 +195,7 @@ func (c *Client) send(ctx context.Context, r apiRequest) (*response, error) {
 		sleep = c.hooks.sleep
 	}
 	for attempt := 0; ; attempt++ {
-		resp, wait, err := c.attempt(ctx, r.method, endpoint, payload, contentType, requestID, idempotencyKey)
+		resp, wait, err := c.attempt(ctx, r.method, endpoint, payload, contentType, r.accept, requestID, idempotencyKey)
 		if err == nil {
 			return resp, nil
 		}
@@ -191,7 +211,7 @@ func (c *Client) send(ctx context.Context, r apiRequest) (*response, error) {
 
 // attempt performs ONE HTTP attempt. It returns the response (2xx) or the
 // error, plus the wait requested by Retry-After (nil when absent).
-func (c *Client) attempt(ctx context.Context, method, endpoint string, payload []byte, contentType, requestID, idempotencyKey string) (*response, *time.Duration, error) {
+func (c *Client) attempt(ctx context.Context, method, endpoint string, payload []byte, contentType, accept, requestID, idempotencyKey string) (*response, *time.Duration, error) {
 	var body io.Reader
 	if payload != nil {
 		body = bytes.NewReader(payload)
@@ -202,7 +222,10 @@ func (c *Client) attempt(ctx context.Context, method, endpoint string, payload [
 	}
 	h := req.Header
 	h.Set("Authorization", "Bearer "+c.apiKey)
-	h.Set("Accept", "application/json")
+	if accept == "" {
+		accept = "application/json"
+	}
+	h.Set("Accept", accept)
 	// Identifica SDK e versão para a API — é por ele que avisamos você quando a
 	// versão que roda tem correção que exige atualizar o código.
 	h.Set("X-Bzapper-Client", ClientID)
@@ -237,10 +260,12 @@ func (c *Client) attempt(ctx context.Context, method, endpoint string, payload [
 	}
 	trimmed := bytes.TrimSpace(raw)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		if len(trimmed) > 0 && !json.Valid(trimmed) {
+		// A text response (Accept: text/csv) is returned as it came; only a JSON
+		// one must really be JSON.
+		if strings.Contains(accept, "json") && len(trimmed) > 0 && !json.Valid(trimmed) {
 			return nil, nil, invalidResponse(resp.StatusCode, responseID, errors.New("the response body is not JSON"))
 		}
-		return &response{status: resp.StatusCode, requestID: responseID, body: trimmed}, nil, nil
+		return &response{status: resp.StatusCode, requestID: responseID, body: trimmed, rawBody: raw}, nil, nil
 	}
 	wait := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	return nil, wait, errorFromResponse(resp.StatusCode, trimmed, resp.Header, wait, responseID)

@@ -8,11 +8,11 @@ API keys, and track usage. Built on the standard library only (`net/http` +
 ## Install
 
 ```sh
-go get github.com/bernisoftware/bzapper-go@v0.7.1
+go get github.com/bernisoftware/bzapper-go@v0.8.0
 ```
 
 **Pin the exact version** (`@vX.Y.Z` in `go get`, which `go.mod` then records as
-`require github.com/bernisoftware/bzapper-go v0.7.1`): every release note states
+`require github.com/bernisoftware/bzapper-go v0.8.0`): every release note states
 whether it changes the public surface (breaking vs additive), so upgrading is a
 deliberate decision. Zero runtime dependencies — standard library only.
 
@@ -222,6 +222,26 @@ created, _ := client.CreateKey(ctx, bzapper.CreateKeyParams{Name: "ci", Role: bz
 client.RevokeKey(ctx, created.Key.ID)
 ```
 
+**Rotating without downtime.** `RotateKey` issues a new key with the same role,
+scopes, project and name, and keeps the old one working for a grace period — so
+a deploy in progress does not break mid-flight. The raw key is shown once here
+too.
+
+```go
+grace := 3600 // the old key still works for 1h (nil = 24h, &zero = revoke now, max 30 days)
+rot, _ := client.RotateKey(ctx, created.Key.ID, bzapper.RotateKeyParams{RevokeInSeconds: &grace})
+
+fmt.Println(rot.APIKey)             // RAW new key — store it before anything else
+fmt.Println(*rot.OldKeyExpiresAt)   // when the old one stops working (nil = revoked now)
+fmt.Println(rot.PreviousKey.RotatedTo) // id of the key that replaced it
+```
+
+After the deadline the old key answers `401 key_expired`; on a key in `ListKeys`,
+`ExpiresAt` and `RotatedTo` show a rotation already under way. Admin only
+(`403 admin_required`), and `409 key_already_revoked` / `key_already_expired`
+when there is nothing left to rotate. Partner keys (bZapper Connect) rotate
+through `PartnerClient.RotateConnectionKey`.
+
 ## Usage
 
 ```go
@@ -394,6 +414,62 @@ client.CreateContactGroup(ctx, bzapper.CreateTaxonParams{Key: "clientes", Name: 
 client.CreateSuppression(ctx, bzapper.CreateSuppressionParams{Phone: "+5511999998888", Reason: "pediu para sair"})
 client.DeleteSuppression(ctx, "+5511999998888")
 ```
+
+### Bulk import
+
+`ImportContacts` upserts up to 1000 contacts by phone in one call. A new contact
+arrives with source `import` and status `pending_validation` (it still needs
+opt-in before a campaign); an existing one has only the informed fields updated —
+a blank value never erases what is there. Tags and groups are created on demand.
+A bad row does **not** fail the rest of the call: read `Errors` and `SkippedRows`
+(a suppressed, opted-out or blocked contact is never resurrected). `DryRun`
+validates everything and writes nothing.
+
+```go
+res, _ := client.ImportContacts(ctx, bzapper.ImportContactsParams{
+	DryRun: true, // drop it to actually write
+	Contacts: []bzapper.ContactImportRow{
+		{Phone: "+5511988887777", Name: "Ana", Email: "ana@example.com", Tags: []string{"vip"}},
+		{Phone: "+5511977776666", Name: "Bruno", Groups: []string{"clientes"},
+			Address: &bzapper.ContactAddress{City: "São Paulo", State: "SP"}},
+	},
+})
+fmt.Println(res.Total, res.Created, res.Updated, res.Skipped, res.Failed)
+for _, row := range res.Errors { // and res.SkippedRows
+	fmt.Printf("row %d (%s): %s %s\n", row.Index, row.Phone, row.Reason, row.Detail)
+}
+```
+
+More than 1000 rows is `422 import_too_large` — send it in batches.
+
+### CSV export
+
+`ExportContacts` takes the **same filters as `ListContacts`** (no offset) and
+returns the CSV as **text**, not JSON — this is the one endpoint that does not
+answer JSON, so the SDK hands you the document exactly as it came on the wire
+(no parsing, nothing trimmed). Columns:
+`phone,name,email,status,source,tags,groups,created_at,last_activity_at`, with
+tags and groups `;`-joined and timestamps in RFC 3339 UTC.
+
+```go
+csvText, err := client.ExportContacts(ctx, bzapper.ExportContactsParams{
+	Tags: "vip", TagsMatch: "all", Status: "active", Limit: 5000,
+})
+if err != nil {
+	log.Fatal(err)
+}
+if err := os.WriteFile("contacts.csv", []byte(csvText), 0o644); err != nil {
+	log.Fatal(err)
+}
+
+// Or parse it in place with encoding/csv:
+rows, _ := csv.NewReader(strings.NewReader(csvText)).ReadAll()
+fmt.Println(len(rows)-1, "contacts") // minus the header
+```
+
+The whole body is read into the string, so cap large bases with `Limit`
+(maximum 100000 rows). Errors behave like everywhere else — a non-2xx answer is
+an `*bzapper.Error` with the API `Code`.
 
 ## Campaigns and pools
 

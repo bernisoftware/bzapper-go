@@ -297,6 +297,11 @@ type APIKey struct {
 	// PartnerConnectionID is set when the key was issued to a partner via
 	// bZapper Connect.
 	PartnerConnectionID *string `json:"partner_connection_id,omitempty"`
+	// ExpiresAt is when a ROTATED key stops working (the grace period given by
+	// RotateKey). Nil while the key was never rotated.
+	ExpiresAt *string `json:"expires_at,omitempty"`
+	// RotatedTo is the id of the key that replaced this one (set by RotateKey).
+	RotatedTo string `json:"rotated_to,omitempty"`
 }
 
 // APIKeyList is the response of ListKeys.
@@ -315,6 +320,24 @@ type CreateKeyParams struct {
 type APIKeyCreated struct {
 	APIKey string `json:"api_key"`
 	Key    APIKey `json:"key"`
+}
+
+// RotateKeyParams is the (optional) request for RotateKey. RevokeInSeconds is
+// the grace period kept for the OLD key: nil uses the API default (86400 = 24h),
+// a pointer to 0 revokes it immediately, and the maximum is 2592000 (30 days).
+type RotateKeyParams struct {
+	RevokeInSeconds *int `json:"revoke_in_seconds,omitempty"`
+}
+
+// APIKeyRotated is the response of RotateKey. APIKey is the RAW new key, shown
+// only once and never recoverable — store it before anything else. PreviousKey
+// is the rotated key's metadata and OldKeyExpiresAt is when it stops working
+// (nil when it was revoked immediately).
+type APIKeyRotated struct {
+	APIKey          string  `json:"api_key"`
+	Key             APIKey  `json:"key"`
+	PreviousKey     *APIKey `json:"previous_key,omitempty"`
+	OldKeyExpiresAt *string `json:"old_key_expires_at,omitempty"`
 }
 
 // --- Usage ---
