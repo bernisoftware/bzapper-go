@@ -150,10 +150,14 @@ type SendLocationParams struct {
 	Address   string  `json:"address,omitempty"`
 }
 
-// SendContactParams is the request for SendContact.
+// SendContactParams is the request for SendContact. Send a ready ContactVCard, or
+// ContactName plus ContactPhone.
 type SendContactParams struct {
 	SendBase
-	ContactName  string `json:"contact_name,omitempty"`
+	ContactName string `json:"contact_name,omitempty"`
+	// ContactPhone is the phone (E.164) of the contact being SHARED on the card,
+	// never the destination. Required together with ContactName.
+	ContactPhone string `json:"contact_phone,omitempty"`
 	ContactVCard string `json:"contact_vcard,omitempty"`
 }
 

@@ -8,11 +8,11 @@ API keys, and track usage. Built on the standard library only (`net/http` +
 ## Install
 
 ```sh
-go get github.com/bernisoftware/bzapper-go@v0.8.1
+go get github.com/bernisoftware/bzapper-go@v0.8.2
 ```
 
 **Pin the exact version** (`@vX.Y.Z` in `go get`, which `go.mod` then records as
-`require github.com/bernisoftware/bzapper-go v0.8.1`): every release note states
+`require github.com/bernisoftware/bzapper-go v0.8.2`): every release note states
 whether it changes the public surface (breaking vs additive), so upgrading is a
 deliberate decision. Zero runtime dependencies — standard library only.
 
@@ -140,7 +140,7 @@ client.SendLocation(ctx, bzapper.SendLocationParams{SendBase: to,
 
 // Contact
 client.SendContact(ctx, bzapper.SendContactParams{SendBase: to,
-	ContactName: "Suporte bZapper"})
+	ContactName: "Suporte bZapper", ContactPhone: "+5511977776666"})
 
 // Poll
 client.SendPoll(ctx, bzapper.SendPollParams{SendBase: to,
