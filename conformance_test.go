@@ -422,6 +422,16 @@ var conformanceOps = map[string]opFunc{
 	"completeOfficialSignup": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.CompleteOfficialSignup(ctx, body[CompleteOfficialSignupParams](a)))
 	},
+	"getOfficialInsights": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		p := InsightsParams{Days: a.qInt("days")}
+		if v := a.q("from"); v != "" {
+			p.From, _ = time.Parse(time.RFC3339, v)
+		}
+		if v := a.q("to"); v != "" {
+			p.To, _ = time.Parse(time.RFC3339, v)
+		}
+		return ret(c.GetOfficialInsights(ctx, p))
+	},
 	"uploadOfficialMedia": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.UploadOfficialMedia(ctx, a.upload(), a.q("instance_id")))
 	},

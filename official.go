@@ -415,6 +415,96 @@ func (c *Client) ListMetaWebhookEvents(ctx context.Context, limit int, before in
 	return call[MetaWebhookEventList](ctx, c, apiRequest{method: http.MethodGet, path: "/official/webhook-events", query: q})
 }
 
+// OfficialInsights is the official-rail dashboard: what Meta will charge the
+// customer (estimated per category, with the month projection) and the
+// rail's KPIs. bZapper charges only the subscription.
+type OfficialInsights struct {
+	From     time.Time `json:"from"`
+	To       time.Time `json:"to"`
+	RateCard struct {
+		Market    string             `json:"market"`
+		Currency  string             `json:"currency"`
+		Effective string             `json:"effective"`
+		Source    string             `json:"source"`
+		Rates     map[string]float64 `json:"rates"`
+		Tiers     []struct {
+			From int     `json:"from"`
+			Rate float64 `json:"rate"`
+		} `json:"tiers"`
+	} `json:"rate_card"`
+	Cost struct {
+		Currency       string   `json:"currency"`
+		Period         float64  `json:"period"`
+		PreviousPeriod float64  `json:"previous_period"`
+		ChangePct      *float64 `json:"change_pct"`
+		MonthToDate    float64  `json:"month_to_date"`
+		ProjectedMonth float64  `json:"projected_month"`
+		ByCategory     []struct {
+			Category string  `json:"category"`
+			Messages int     `json:"messages"`
+			Billable int     `json:"billable"`
+			Cost     float64 `json:"cost"`
+		} `json:"by_category"`
+		Confirmed      int `json:"confirmed"`
+		Estimated      int `json:"estimated"`
+		OtherCountries int `json:"other_countries"`
+	} `json:"cost"`
+	Messages struct {
+		Sent         int     `json:"sent"`
+		Delivered    int     `json:"delivered"`
+		Read         int     `json:"read"`
+		Failed       int     `json:"failed"`
+		Received     int     `json:"received"`
+		DeliveryRate float64 `json:"delivery_rate"`
+		ReadRate     float64 `json:"read_rate"`
+		FreeMessages int     `json:"free_messages"`
+		Contacts     int     `json:"contacts"`
+	} `json:"messages"`
+	Templates []struct {
+		Name     string  `json:"name"`
+		Category string  `json:"category"`
+		Sent     int     `json:"sent"`
+		Failed   int     `json:"failed"`
+		Cost     float64 `json:"cost"`
+	} `json:"templates"`
+	Failures []struct {
+		Reason string `json:"reason"`
+		Count  int    `json:"count"`
+	} `json:"failures"`
+	AdReferrals      int `json:"ad_referrals"`
+	MarketingOptOuts int `json:"marketing_opt_outs"`
+	Numbers          []struct {
+		DisplayNumber string `json:"display_number"`
+		Quality       string `json:"quality"`
+		Limit         string `json:"limit"`
+		Status        string `json:"status"`
+	} `json:"numbers"`
+}
+
+// InsightsParams picks the period: Days (ending now) or From/To. Zero values
+// use the server default (last 30 days).
+type InsightsParams struct {
+	Days int
+	From time.Time
+	To   time.Time
+}
+
+// GetOfficialInsights returns the estimated Meta cost and the official-rail
+// KPIs for a period. GET /official/insights.
+func (c *Client) GetOfficialInsights(ctx context.Context, p InsightsParams) (*OfficialInsights, error) {
+	q := url.Values{}
+	if p.Days > 0 {
+		q.Set("days", strconv.Itoa(p.Days))
+	}
+	if !p.From.IsZero() {
+		q.Set("from", p.From.Format(time.RFC3339))
+	}
+	if !p.To.IsZero() {
+		q.Set("to", p.To.Format(time.RFC3339))
+	}
+	return call[OfficialInsights](ctx, c, apiRequest{method: http.MethodGet, path: "/official/insights", query: q})
+}
+
 // OfficialMedia is a file stored at Meta (UploadOfficialMedia). Send it as
 // MediaInput.ID from the same number for 30 days.
 type OfficialMedia struct {
