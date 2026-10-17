@@ -135,6 +135,12 @@ type SendOTPParams struct {
 	Body string `json:"body,omitempty"`
 	// ExpiryMinutes optionally mentions the expiry in the generated text.
 	ExpiryMinutes int `json:"expiry_minutes,omitempty"`
+	// Template (official rail only) names an approved AUTHENTICATION template
+	// to carry the code, even inside the 24-hour window. Without it, the
+	// project's authentication template is used only when the window is closed.
+	Template string `json:"template,omitempty"`
+	// Language optionally picks the authentication template's language.
+	Language string `json:"language,omitempty"`
 }
 
 // SendMediaParams is the request for image, video, document, audio and sticker
