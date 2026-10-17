@@ -503,6 +503,12 @@ var conformanceOps = map[string]opFunc{
 	"uploadTemplateMedia": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.UploadTemplateMedia(ctx, a.upload()))
 	},
+	"getOTPTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetOTPTemplate(ctx))
+	},
+	"setOTPTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.SetOTPTemplate(ctx, a.bodyStr("template_id")))
+	},
 	"getFallbackTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.GetFallbackTemplate(ctx))
 	},

@@ -139,6 +139,25 @@ type FallbackTemplate struct {
 	Template *Template `json:"template"`
 }
 
+// OTPEligibility is what Meta requires to allow Authentication templates and
+// the state of each criterion.
+type OTPEligibility struct {
+	BusinessVerification  string `json:"business_verification"` // verified, pending, not_verified…
+	MessagingLimit        string `json:"messaging_limit"`
+	RequiredLimit         string `json:"required_limit"`
+	VerificationOK        bool   `json:"verification_ok"`
+	LimitOK               bool   `json:"limit_ok"`
+	ApprovedAuthTemplates int    `json:"approved_auth_templates"`
+}
+
+// OTPTemplate is the response of GetOTPTemplate.
+type OTPTemplate struct {
+	// Template is nil when none was chosen (the first approved Authentication
+	// template is used).
+	Template    *Template      `json:"template"`
+	Eligibility OTPEligibility `json:"eligibility"`
+}
+
 // TemplateMedia is the response of UploadTemplateMedia: pass URL as
 // TemplateHeader.MediaURL in CreateTemplate.
 type TemplateMedia struct {
@@ -228,6 +247,23 @@ func (c *Client) UploadTemplateMedia(ctx context.Context, file UploadFile) (*Tem
 // GET /templates/fallback.
 func (c *Client) GetFallbackTemplate(ctx context.Context) (*FallbackTemplate, error) {
 	return call[FallbackTemplate](ctx, c, apiRequest{method: http.MethodGet, path: "/templates/fallback"})
+}
+
+// GetOTPTemplate returns the template that carries the verification code of
+// SendOTP outside the 24-hour window, plus whether Meta already allows
+// Authentication templates on the account. GET /templates/otp.
+func (c *Client) GetOTPTemplate(ctx context.Context) (*OTPTemplate, error) {
+	return call[OTPTemplate](ctx, c, apiRequest{method: http.MethodGet, path: "/templates/otp"})
+}
+
+// SetOTPTemplate chooses the APPROVED Authentication template that carries the
+// verification code outside the window (422 template_not_authentication for
+// another category). An empty templateID clears the choice. PUT /templates/otp.
+func (c *Client) SetOTPTemplate(ctx context.Context, templateID string) error {
+	return c.exec(ctx, apiRequest{method: http.MethodPut, path: "/templates/otp",
+		body: struct {
+			TemplateID string `json:"template_id"`
+		}{templateID}})
 }
 
 // SetFallbackTemplate chooses the template sent when the 24-hour window is
