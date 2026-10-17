@@ -256,9 +256,11 @@ func (c *Client) GetOTPTemplate(ctx context.Context) (*OTPTemplate, error) {
 	return call[OTPTemplate](ctx, c, apiRequest{method: http.MethodGet, path: "/templates/otp"})
 }
 
-// SetOTPTemplate chooses the APPROVED Authentication template that carries the
-// verification code outside the window (422 template_not_authentication for
-// another category). An empty templateID clears the choice. PUT /templates/otp.
+// SetOTPTemplate chooses the APPROVED template that carries the verification
+// code outside the window: Authentication or, until Meta releases it, a
+// provisional Utility template with a copy-code button (422
+// template_not_otp_capable otherwise). An empty templateID clears the choice.
+// PUT /templates/otp.
 func (c *Client) SetOTPTemplate(ctx context.Context, templateID string) error {
 	return c.exec(ctx, apiRequest{method: http.MethodPut, path: "/templates/otp",
 		body: struct {
