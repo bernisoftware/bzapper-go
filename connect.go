@@ -107,8 +107,11 @@ type PartnerConnection struct {
 	ActivatedAt    *string `json:"activated_at,omitempty"`
 	SuspendedAt    *string `json:"suspended_at,omitempty"`
 	RevokedAt      *string `json:"revoked_at,omitempty"`
-	CreatedAt      string  `json:"created_at,omitempty"`
-	UpdatedAt      string  `json:"updated_at,omitempty"`
+	// StandaloneAt is when the customer converted this account to general use. Nil
+	// means the account is still managed by the partner and issues no own API keys.
+	StandaloneAt *string `json:"standalone_at,omitempty"`
+	CreatedAt    string  `json:"created_at,omitempty"`
+	UpdatedAt    string  `json:"updated_at,omitempty"`
 }
 
 // PartnerConnectionWithKey is a connection plus the raw API key (bz_live_...),
@@ -266,4 +269,16 @@ func (c *Client) ListConnectedApps(ctx context.Context) ([]PartnerConnection, er
 // working immediately. DELETE /me/connections/{id}.
 func (c *Client) RevokeConnectedApp(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/me/connections/"+url.PathEscape(id), nil, nil, nil)
+}
+
+// ConvertConnectedAppToStandalone converts a partner-created account to general use
+// (admin). The connection STAYS: the partner keeps working and any partnership discount
+// keeps applying — what changes is that the account may now issue its own API keys.
+// Irreversible. POST /me/connections/{id}/standalone.
+func (c *Client) ConvertConnectedAppToStandalone(ctx context.Context, id string) (*PartnerConnection, error) {
+	var out PartnerConnection
+	if err := c.do(ctx, http.MethodPost, "/me/connections/"+url.PathEscape(id)+"/standalone", nil, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

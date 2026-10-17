@@ -29,6 +29,13 @@ var WebhookEventTypes = []string{
 	"group.joined", "group.left", "group.participant_added", "group.participant_removed",
 	"group.participant_promoted", "group.participant_demoted",
 	"group.subject_changed", "group.description_changed",
+	// Official WhatsApp (Cloud API): what Meta decides about templates, the
+	// number and the account.
+	"template.approved", "template.rejected", "template.paused", "template.quality_changed",
+	"template.categorized", "instance.quality_changed", "instance.limit_changed",
+	"instance.name_decided", "account.status_changed", "account.alert", "contact.opted_in",
+	// Account-level (plan usage, billing, integration advisories).
+	"usage.threshold", "billing.past_due", "billing.recovered", "advisory.published",
 }
 
 // ErrInvalidSignature is returned when a webhook signature is missing or does

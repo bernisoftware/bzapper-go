@@ -16,7 +16,7 @@ const (
 	PoolHealthWeighted PoolStrategy = "health_weighted"
 )
 
-// Pool is a group of numbers used in rotation.
+// Pool is a group of numbers that share delivery, with automatic failover.
 type Pool struct {
 	ID        string       `json:"id"`
 	TenantID  string       `json:"tenant_id,omitempty"`
@@ -55,12 +55,25 @@ type OfficialAccount struct {
 	QualityRating  string `json:"quality_rating,omitempty"`
 	MessagingLimit string `json:"messaging_limit,omitempty"`
 	Source         string `json:"source,omitempty"` // embedded_signup | manual
+	// IsDefault marks the number that sends when a request does not pick one
+	// (ListOfficialNumbers, SetDefaultOfficialNumber).
+	IsDefault bool `json:"is_default,omitempty"`
+	// InstanceID is the SAME value you pass as SendBase.InstanceID to choose
+	// which number a send goes out from — exactly as on the unofficial rail.
+	InstanceID string `json:"instance_id,omitempty"`
 }
 
 // ConnectOfficialAccountParams is the request for ConnectOfficialAccount.
 type ConnectOfficialAccountParams struct {
-	WabaID        string `json:"waba_id"`
-	PhoneNumberID string `json:"phone_number_id"`
+	WabaID string `json:"waba_id"`
+	// PhoneNumberID is optional: when empty, the number is discovered from the
+	// WABA. If the WABA holds more than one number the call fails with 409
+	// multiple_phone_numbers and Error.Body lists them — pick one and repeat.
+	PhoneNumberID string `json:"phone_number_id,omitempty"`
+	// AccessToken is the customer's WABA token, stored encrypted at rest. A
+	// token from Meta's "API Setup" screen expires in 24h; for a lasting
+	// connection use a system user with whatsapp_business_messaging +
+	// whatsapp_business_management.
 	AccessToken   string `json:"access_token"`
 	DisplayNumber string `json:"display_number,omitempty"`
 	VerifiedName  string `json:"verified_name,omitempty"`
@@ -166,6 +179,8 @@ func (c *Client) GetOfficialAccount(ctx context.Context) (*OfficialAccount, erro
 }
 
 // ConnectOfficialAccount links a Cloud API account (manual onboarding).
+// Calling it again replaces the credentials — that is the reconnection path
+// when a token is revoked; it never creates a second account for the project.
 // POST /official/account.
 func (c *Client) ConnectOfficialAccount(ctx context.Context, p ConnectOfficialAccountParams) (*OfficialAccount, error) {
 	return call[OfficialAccount](ctx, c, apiRequest{method: http.MethodPost, path: "/official/account", body: p})
@@ -176,7 +191,7 @@ func (c *Client) DisconnectOfficialAccount(ctx context.Context) error {
 	return c.exec(ctx, apiRequest{method: http.MethodDelete, path: "/official/account"})
 }
 
-// GetCampaignEligibility tells which numbers can dispatch campaigns (warm-up,
+// GetCampaignEligibility tells which numbers can dispatch campaigns (connection age,
 // health). GET /campaigns/eligibility.
 func (c *Client) GetCampaignEligibility(ctx context.Context, p CampaignEligibilityParams) (*CampaignEligibility, error) {
 	return call[CampaignEligibility](ctx, c, apiRequest{method: http.MethodGet, path: "/campaigns/eligibility",

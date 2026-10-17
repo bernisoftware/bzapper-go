@@ -147,6 +147,28 @@ func (c *Client) TestWebhook(ctx context.Context, id, eventType string) (*Webhoo
 	return &out, nil
 }
 
+// WebhookRedelivery is the outcome of RedeliverWebhookDelivery.
+type WebhookRedelivery struct {
+	DeliveryID string `json:"delivery_id"`
+	EventID    string `json:"event_id"`
+	EventType  string `json:"event_type"`
+	// Status is the HTTP status your endpoint answered (0 on transport failure).
+	Status    int    `json:"status"`
+	Delivered bool   `json:"delivered"`
+	Error     string `json:"error,omitempty"`
+}
+
+// RedeliverWebhookDelivery sends a FAILED delivery again: same body and
+// event_id, signed with the webhook's current secret. Only failures from the
+// last 7 days. POST /webhooks/{id}/deliveries/{delivery_id}/redeliver.
+func (c *Client) RedeliverWebhookDelivery(ctx context.Context, id, deliveryID string) (*WebhookRedelivery, error) {
+	var out WebhookRedelivery
+	if err := c.do(ctx, http.MethodPost, "/webhooks/"+url.PathEscape(id)+"/deliveries/"+url.PathEscape(deliveryID)+"/redeliver", nil, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // WebhookDeliveries returns the recent delivery attempts for a webhook. Pass
 // limit <= 0 to use the server default. GET /webhooks/{id}/deliveries.
 func (c *Client) WebhookDeliveries(ctx context.Context, id string, limit int) (*WebhookDeliveryList, error) {

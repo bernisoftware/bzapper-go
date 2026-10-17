@@ -39,7 +39,7 @@ const (
 type SendBase struct {
 	// To is the destination phone in E.164 (e.g. "+5511999999999") or a JID.
 	To string `json:"to"`
-	// InstanceID pins a specific number, bypassing rotation. Optional.
+	// InstanceID pins a specific number instead of letting bZapper pick one. Optional.
 	InstanceID string `json:"instance_id,omitempty"`
 	// PoolID rotates within this pool (when InstanceID is empty). Optional.
 	PoolID string `json:"pool_id,omitempty"`
@@ -56,7 +56,7 @@ type SendBase struct {
 	Mentions []string `json:"mentions,omitempty"`
 	// Sticky is conversation affinity: with no InstanceID/PoolID, reuse the
 	// number already talking to To (support). Defaults to true server-side;
-	// set false to force rotation. Optional.
+	// set false to let bZapper pick a number for each send. Optional.
 	Sticky *bool `json:"sticky,omitempty"`
 	// ScheduledAt schedules the send for a future RFC3339 time. The number is
 	// picked at send time. Max lead: Free 24h, Pro 30 days, 1 year with the
@@ -86,6 +86,9 @@ func (b SendBase) idempotencyKey() string { return b.IdempotencyKey }
 
 // MediaInput describes media sent by URL or by base64 (use one, never both).
 type MediaInput struct {
+	// ID is a file already uploaded with UploadOfficialMedia (official rail
+	// only): sends it again without re-uploading. Valid 30 days, same number.
+	ID       string `json:"id,omitempty"`
 	URL      string `json:"url,omitempty"`
 	Base64   string `json:"base64,omitempty"`
 	Caption  string `json:"caption,omitempty"`
@@ -208,6 +211,21 @@ type Message struct {
 	// (Status "scheduled").
 	ScheduledID string `json:"scheduled_id,omitempty"`
 	ScheduledAt string `json:"scheduled_at,omitempty"`
+	// Delivery is set ONLY when the platform took a path other than the one
+	// you asked for — today, the 24-hour window was closed on the official
+	// rail and the project fallback template went out instead of the free
+	// text. nil = sent as requested.
+	Delivery *DeliveryInfo `json:"delivery,omitempty"`
+}
+
+// DeliveryInfo reports a detour taken by a send (Message.Delivery).
+type DeliveryInfo struct {
+	// Via is "template_fallback".
+	Via string `json:"via,omitempty"`
+	// Template is the name of the template actually sent.
+	Template string `json:"template,omitempty"`
+	// Note is one sentence explaining what happened, safe to show to a person.
+	Note string `json:"note,omitempty"`
 }
 
 // --- Instances ---
@@ -222,6 +240,10 @@ type Instance struct {
 	JID          string         `json:"jid,omitempty"`
 	Status       InstanceStatus `json:"status"`
 	StatusReason string         `json:"status_reason,omitempty"`
+	// Rail is where the number comes from: "unofficial" (paired by QR) or
+	// "official" (a Meta number — no QR, session or connection-age rule; its lifecycle is
+	// under /official/numbers).
+	Rail string `json:"rail,omitempty"`
 	// BannedUntil: quando um ban TEMPORÁRIO expira (o número reconecta sozinho).
 	// Vazio em ban permanente (revisão no app + re-pareamento) ou sem ban.
 	BannedUntil string `json:"banned_until,omitempty"`
@@ -238,7 +260,7 @@ type Instance struct {
 	LastSendFailureAt string `json:"last_send_failure_at,omitempty"`
 	LastSendError     string `json:"last_send_error,omitempty"`
 
-	// WarmingStartedAt is when the number entered the warm-up period.
+	// WarmingStartedAt is when the number's gradual send-limit ramp started.
 	WarmingStartedAt string `json:"warming_started_at,omitempty"`
 	// HealthScore is the number's health (0–100) used by health_weighted pools.
 	HealthScore int `json:"health_score,omitempty"`
@@ -415,6 +437,14 @@ type Conversation struct {
 	LastBody      string `json:"last_body,omitempty"`
 	LastAt        string `json:"last_at,omitempty"`
 	Unread        int    `json:"unread,omitempty"`
+	// AvatarURL and LastInstanceID: the contact picture and the number that
+	// handled the last message.
+	AvatarURL      string `json:"avatar_url,omitempty"`
+	LastInstanceID string `json:"last_instance_id,omitempty"`
+	// LastInboundAt is the last message FROM the contact. On the official rail it
+	// opens the 24-hour window: free text goes through until LastInboundAt + 24h.
+	// Empty when the contact never wrote.
+	LastInboundAt string `json:"last_inbound_at,omitempty"`
 
 	// Legacy fields (kept for compatibility).
 	JID           string `json:"jid"`

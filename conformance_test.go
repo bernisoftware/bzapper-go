@@ -301,6 +301,11 @@ var conformanceOps = map[string]opFunc{
 		p.IdempotencyKey = a.idem()
 		return ret(c.SendOTP(ctx, p))
 	},
+	"sendTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		p := body[SendTemplateParams](a)
+		p.IdempotencyKey = a.idem()
+		return ret(c.SendTemplate(ctx, p))
+	},
 	"sendImage": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.SendImage(ctx, body[SendMediaParams](a)))
 	},
@@ -407,6 +412,92 @@ var conformanceOps = map[string]opFunc{
 	},
 	"disconnectOfficialAccount": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return none(c.DisconnectOfficialAccount(ctx))
+	},
+	"getOfficialStatus": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetOfficialStatus(ctx))
+	},
+	"getOfficialSignupConfig": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetOfficialSignupConfig(ctx))
+	},
+	"completeOfficialSignup": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.CompleteOfficialSignup(ctx, body[CompleteOfficialSignupParams](a)))
+	},
+	"uploadOfficialMedia": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.UploadOfficialMedia(ctx, a.upload(), a.q("instance_id")))
+	},
+	"getOfficialMedia": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetOfficialMedia(ctx, a.path("media_id"), a.q("instance_id")))
+	},
+	"deleteOfficialMedia": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return nil, c.DeleteOfficialMedia(ctx, a.path("media_id"), a.q("instance_id"))
+	},
+	"listMetaWebhookEvents": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ListMetaWebhookEvents(ctx, a.qInt("limit"), int64(a.qInt("before"))))
+	},
+	"listOfficialNumbers": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ListOfficialNumbers(ctx))
+	},
+	"listAvailableOfficialNumbers": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ListAvailableOfficialNumbers(ctx))
+	},
+	"addOfficialNumber": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.AddOfficialNumber(ctx, a.bodyStr("phone_number_id")))
+	},
+	"setDefaultOfficialNumber": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.SetDefaultOfficialNumber(ctx, a.path("id")))
+	},
+	"disconnectOfficialNumber": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.DisconnectOfficialNumber(ctx, a.path("id")))
+	},
+	"getOfficialProfile": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetOfficialProfile(ctx))
+	},
+	"updateOfficialProfile": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.UpdateOfficialProfile(ctx, body[BusinessProfile](a)))
+	},
+	"uploadOfficialProfilePhoto": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.UploadOfficialProfilePhoto(ctx, a.upload()))
+	},
+	"reregisterOfficialProfile": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.ReregisterOfficialProfile(ctx))
+	},
+	"getOfficialNumberProfile": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetOfficialNumberProfile(ctx, a.path("id")))
+	},
+	"updateOfficialNumberProfile": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.UpdateOfficialNumberProfile(ctx, a.path("id"), body[BusinessProfile](a)))
+	},
+	"uploadOfficialNumberProfilePhoto": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.UploadOfficialNumberProfilePhoto(ctx, a.path("id"), a.upload()))
+	},
+	"reregisterOfficialNumberProfile": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.ReregisterOfficialNumberProfile(ctx, a.path("id")))
+	},
+
+	// --- templates (official rail) ---
+	"listTemplates": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ListTemplates(ctx))
+	},
+	"createTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.CreateTemplate(ctx, body[TemplateSpec](a)))
+	},
+	"getTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetTemplate(ctx, a.path("id")))
+	},
+	"deleteTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.DeleteTemplate(ctx, a.path("id")))
+	},
+	"syncTemplates": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.SyncTemplates(ctx))
+	},
+	"uploadTemplateMedia": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.UploadTemplateMedia(ctx, a.upload()))
+	},
+	"getFallbackTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetFallbackTemplate(ctx))
+	},
+	"setFallbackTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.SetFallbackTemplate(ctx, a.bodyStr("template_id")))
 	},
 	"getHealth": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.GetHealth(ctx))
@@ -655,6 +746,9 @@ var conformanceOps = map[string]opFunc{
 	"listWebhookDeliveries": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.WebhookDeliveries(ctx, a.path("id"), a.qInt("limit")))
 	},
+	"redeliverWebhookDelivery": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.RedeliverWebhookDelivery(ctx, a.path("id"), a.path("delivery_id")))
+	},
 	"triggerWebhookEvent": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.TriggerWebhookEvent(ctx, a.bodyStr("event_type")))
 	},
@@ -789,6 +883,9 @@ var conformanceOps = map[string]opFunc{
 	},
 	"revokeConnectedApp": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return none(c.RevokeConnectedApp(ctx, a.path("id")))
+	},
+	"convertConnectedAppToStandalone": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return c.ConvertConnectedAppToStandalone(ctx, a.path("id"))
 	},
 
 	// --- bZapper Connect: partner side (PartnerClient) ---

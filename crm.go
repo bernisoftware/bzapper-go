@@ -179,7 +179,7 @@ type TaxonRef struct {
 	Key string `json:"key"`
 }
 
-// Suppression is a phone that never receives campaign/bulk sends.
+// Suppression is a phone that never receives campaign sends.
 type Suppression struct {
 	ID        string `json:"id"`
 	Phone     string `json:"phone"`
@@ -292,7 +292,7 @@ func (c *Client) MutateContactGroups(ctx context.Context, id string, p TaxonMuta
 	return call[ContactRecord](ctx, c, apiRequest{method: http.MethodPost, path: "/contacts/" + seg(id) + "/groups", body: p})
 }
 
-// OptOutContact marks the contact as opted out (no bulk sends).
+// OptOutContact marks the contact as opted out (no campaign sends).
 // POST /contacts/{id}/optout.
 func (c *Client) OptOutContact(ctx context.Context, id string) (*ContactRecord, error) {
 	return call[ContactRecord](ctx, c, apiRequest{method: http.MethodPost, path: "/contacts/" + seg(id) + "/optout"})

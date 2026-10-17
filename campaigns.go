@@ -44,12 +44,26 @@ func (c *Client) CancelScheduled(ctx context.Context, id string) error {
 
 // --- Campaigns (Pro + campaigns add-on) ------------------------------------
 
-// CampaignVariation is a template variation (rotated). Body accepts {variables}
-// and spintax {a|b|c}.
+// CampaignVariation is a message variation (rotated). On the unofficial rail it
+// is text: Body accepts {variables} and spintax {a|b|c}. On the OFFICIAL rail it
+// is an approved template (Template) — free text only reaches people who wrote
+// in the last 24h. Leave Body empty in a template variation.
 type CampaignVariation struct {
-	Body   string         `json:"body"`
-	Weight int            `json:"weight,omitempty"`
-	Media  map[string]any `json:"media,omitempty"`
+	Body     string                     `json:"body"`
+	Weight   int                        `json:"weight,omitempty"`
+	Media    map[string]any             `json:"media,omitempty"`
+	Template *CampaignVariationTemplate `json:"template,omitempty"`
+}
+
+// CampaignVariationTemplate points to an APPROVED template of the project
+// (official rail). Checked when the campaign is created or edited: it must
+// exist, be approved and carry exactly as many Variables as the body expects.
+// Each value accepts {column} from the recipient list.
+type CampaignVariationTemplate struct {
+	Name            string   `json:"name"`
+	Language        string   `json:"language,omitempty"` // only when the template exists in more than one language
+	Variables       []string `json:"variables,omitempty"`
+	HeaderVariables []string `json:"header_variables,omitempty"`
 }
 
 // CampaignCreateParams is the request for CreateCampaign.
