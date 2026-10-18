@@ -292,6 +292,30 @@ func (c *Client) CreateTemplateFromLibrary(ctx context.Context, req LibraryCreat
 	return call[CreateTemplateResult](ctx, c, apiRequest{method: http.MethodPost, path: "/templates/library", body: req})
 }
 
+// TemplateStats is the performance of one template in the period.
+type TemplateStats struct {
+	Name         string  `json:"name"`
+	Sent         int     `json:"sent"`
+	Delivered    int     `json:"delivered"`
+	Read         int     `json:"read"`
+	Failed       int     `json:"failed"`
+	DeliveryRate float64 `json:"delivery_rate"`
+	ReadRate     float64 `json:"read_rate"`
+}
+
+// TemplateAnalytics is the answer of GetTemplateAnalytics.
+type TemplateAnalytics struct {
+	Days      int             `json:"days"`
+	Templates []TemplateStats `json:"templates"`
+}
+
+// GetTemplateAnalytics counts sent, delivered, read and failed by template in
+// the last `days` days (1–90; 0 = 30). GET /templates/analytics.
+func (c *Client) GetTemplateAnalytics(ctx context.Context, days int) (*TemplateAnalytics, error) {
+	return call[TemplateAnalytics](ctx, c, apiRequest{method: http.MethodGet, path: "/templates/analytics",
+		query: newQuery().int("days", days).values()})
+}
+
 // SyncTemplates imports templates that exist at Meta and not here — the ones you
 // created in WhatsApp Manager before using bZapper, or a webhook that never
 // arrived. Without it those templates would be invisible here and sending by
