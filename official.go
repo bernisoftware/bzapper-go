@@ -387,7 +387,7 @@ func (c *Client) GetOTPTemplate(ctx context.Context) (*OTPTemplate, error) {
 
 // SetOTPTemplate chooses the APPROVED template that carries the verification
 // code outside the window: Authentication or, until Meta releases it, a
-// provisional Utility template with a copy-code button (422
+// provisional Utility template with one body variable for the code (422
 // template_not_otp_capable otherwise). An empty templateID clears the choice.
 // PUT /templates/otp.
 func (c *Client) SetOTPTemplate(ctx context.Context, templateID string) error {
