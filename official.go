@@ -85,6 +85,35 @@ type TemplateSpec struct {
 	// category Meta writes the text itself and adds the copy-code button; this
 	// is the only thing you set.
 	CodeExpiryMinutes int `json:"code_expiry_minutes,omitempty"`
+	// LimitedTimeOffer (MARKETING) turns the template into a limited-time
+	// offer: a badge of up to 16 characters and, with HasExpiration, a
+	// countdown to the deadline sent in SendTemplateParams.OfferExpiresAt.
+	LimitedTimeOffer *TemplateOffer `json:"limited_time_offer,omitempty"`
+	// Cards (MARKETING or UTILITY, 2 to 10) turns it into a carousel: the
+	// template keeps only the opening Body; each card has its own media, text
+	// and 1–2 buttons, with the same media type and button types on all cards.
+	Cards []TemplateCard `json:"cards,omitempty"`
+}
+
+// TemplateOffer is the limited-time offer part of a template.
+type TemplateOffer struct {
+	Text          string `json:"text"`
+	HasExpiration bool   `json:"has_expiration"`
+}
+
+// TemplateCard is one card of a carousel template.
+type TemplateCard struct {
+	Header  *TemplateHeader  `json:"header"`
+	Body    TemplateBody     `json:"body"`
+	Buttons []TemplateButton `json:"buttons,omitempty"`
+}
+
+// TemplateCardValues are the values of one carousel card on a send.
+type TemplateCardValues struct {
+	// HeaderURL is the media of the card for this send (empty: the sample).
+	HeaderURL       string   `json:"header_url,omitempty"`
+	Variables       []string `json:"variables,omitempty"`
+	ButtonVariables []string `json:"button_variables,omitempty"`
 }
 
 // Template is a template as bZapper holds it. Meta owns the truth about Status;
@@ -188,6 +217,11 @@ type SendTemplateParams struct {
 	// Code is for AUTHENTICATION templates only: Meta requires it both in the
 	// body and in the copy-code button, and the API places it in both.
 	Code string `json:"code,omitempty"`
+	// OfferExpiresAt (RFC 3339) is the deadline of a limited-time offer with
+	// expiration — the countdown runs to it.
+	OfferExpiresAt string `json:"offer_expires_at,omitempty"`
+	// Cards are the values of each carousel card, in order.
+	Cards []TemplateCardValues `json:"cards,omitempty"`
 }
 
 // ListTemplates lists the project templates, newest first. GET /templates.
