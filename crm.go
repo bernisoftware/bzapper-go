@@ -21,9 +21,12 @@ type ContactAddress struct {
 	Country    string `json:"country,omitempty"`
 }
 
-// CreateContactParams is the request for CreateContact. Phone is required.
+// CreateContactParams is the request for CreateContact. Phone is required: the
+// number with country code or the WhatsApp LID ("<digits>@lid"). With both
+// Phone and Lid, the LID-only contact merges into the phone one.
 type CreateContactParams struct {
 	Phone        string          `json:"phone"`
+	Lid          string          `json:"lid,omitempty"`
 	Name         string          `json:"name,omitempty"`
 	Email        string          `json:"email,omitempty"`
 	Document     string          `json:"document,omitempty"`
@@ -47,7 +50,10 @@ type UpdateContactParams struct {
 // field never erases what the contact already has. Tags and Groups are tag /
 // contact-group keys, created on demand.
 type ContactImportRow struct {
+	// Phone takes the number with country code OR the WhatsApp LID
+	// ("<digits>@lid"); digits without "@lid" are always a phone.
 	Phone        string          `json:"phone"`
+	Lid          string          `json:"lid,omitempty"`
 	Name         string          `json:"name,omitempty"`
 	Email        string          `json:"email,omitempty"`
 	Document     string          `json:"document,omitempty"`
@@ -63,11 +69,14 @@ type ContactImportRow struct {
 type ImportContactsParams struct {
 	Contacts []ContactImportRow `json:"contacts"`
 	DryRun   bool               `json:"dry_run,omitempty"`
+	// Tags and Groups apply to EVERY row (added to each row's own).
+	Tags   []string `json:"tags,omitempty"`
+	Groups []string `json:"groups,omitempty"`
 }
 
 // ContactImportRowIssue is one row the import skipped or failed. Index is its
 // position in the sent slice. Reason is a stable code — errors:
-// phone_required, invalid_phone, invalid_email, write_failed, taxonomy_failed;
+// phone_required, invalid_phone, invalid_lid, invalid_email, write_failed, taxonomy_failed;
 // skips: duplicate_phone, suppressed, opted_out, blocked, unreachable, deleted.
 type ContactImportRowIssue struct {
 	Index  int    `json:"index"`
@@ -211,7 +220,7 @@ func (c *Client) CreateContact(ctx context.Context, p CreateContactParams) (*Con
 
 // ImportContacts upserts up to 1000 contacts by phone in one call. A new
 // contact is created with source "import" and status "pending_validation" (it
-// still needs opt-in before a campaign); an existing one has only the informed
+// can already receive campaigns and becomes active when the person replies); an existing one has only the informed
 // fields updated. A suppressed, opted-out or blocked contact is reported in
 // ContactImportResult.SkippedRows and never resurrected; a bad row lands in
 // Errors and does not fail the rest of the call. Set p.DryRun to validate

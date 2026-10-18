@@ -8,11 +8,11 @@ API keys, and track usage. Built on the standard library only (`net/http` +
 ## Install
 
 ```sh
-go get github.com/bernisoftware/bzapper-go@v0.15.0
+go get github.com/bernisoftware/bzapper-go@v0.15.1
 ```
 
 **Pin the exact version** (`@vX.Y.Z` in `go get`, which `go.mod` then records as
-`require github.com/bernisoftware/bzapper-go v0.15.0`): every release note states
+`require github.com/bernisoftware/bzapper-go v0.15.1`): every release note states
 whether it changes the public surface (breaking vs additive), so upgrading is a
 deliberate decision. Zero runtime dependencies — standard library only.
 
@@ -418,8 +418,7 @@ client.DeleteSuppression(ctx, "+5511999998888")
 ### Bulk import
 
 `ImportContacts` upserts up to 1000 contacts by phone in one call. A new contact
-arrives with source `import` and status `pending_validation` (it still needs
-opt-in before a campaign); an existing one has only the informed fields updated —
+arrives with source `import` and status `pending_validation` (it can already receive campaigns and becomes active when the person replies); an existing one has only the informed fields updated —
 a blank value never erases what is there. Tags and groups are created on demand.
 A bad row does **not** fail the rest of the call: read `Errors` and `SkippedRows`
 (a suppressed, opted-out or blocked contact is never resurrected). `DryRun`

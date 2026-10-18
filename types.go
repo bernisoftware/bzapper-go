@@ -651,6 +651,9 @@ type ContactRecord struct {
 	// slices) keep ContactRecord comparable, as it was before these fields.
 	Tags   *[]string `json:"tags,omitempty"`
 	Groups *[]string `json:"groups,omitempty"`
+	// Lid is the WhatsApp LID ("<digits>@lid"): the address of a LID-only
+	// contact, or the one WhatsApp associated with the phone (contact detail).
+	Lid string `json:"lid,omitempty"`
 }
 
 // ContactRecordList is the response of ListContacts.
