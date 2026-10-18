@@ -326,6 +326,21 @@ func (c *Client) CreateTemplateFromLibrary(ctx context.Context, req LibraryCreat
 	return call[CreateTemplateResult](ctx, c, apiRequest{method: http.MethodPost, path: "/templates/library", body: req})
 }
 
+// TemplateCheck is the verdict of ValidateTemplate.
+type TemplateCheck struct {
+	Valid   bool     `json:"valid"`
+	Problem string   `json:"problem,omitempty"`
+	Advice  []string `json:"advice,omitempty"`
+}
+
+// ValidateTemplate checks a template against Meta's rules without submitting it
+// (no call to Meta, no submission spent). editingID (optional) checks an edit.
+// POST /templates/validate.
+func (c *Client) ValidateTemplate(ctx context.Context, spec TemplateSpec, editingID string) (*TemplateCheck, error) {
+	return call[TemplateCheck](ctx, c, apiRequest{method: http.MethodPost, path: "/templates/validate", body: spec,
+		query: newQuery().str("id", editingID).values()})
+}
+
 // TemplateStats is the performance of one template in the period.
 type TemplateStats struct {
 	Name         string  `json:"name"`
@@ -387,7 +402,8 @@ func (c *Client) GetOTPTemplate(ctx context.Context) (*OTPTemplate, error) {
 
 // SetOTPTemplate chooses the APPROVED template that carries the verification
 // code outside the window: Authentication or, until Meta releases it, a
-// provisional Utility template with one body variable for the code (422
+// provisional template — Marketing with a copy-code button, or Utility with one
+// body variable for the code (422
 // template_not_otp_capable otherwise). An empty templateID clears the choice.
 // PUT /templates/otp.
 func (c *Client) SetOTPTemplate(ctx context.Context, templateID string) error {

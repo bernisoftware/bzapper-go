@@ -500,6 +500,9 @@ var conformanceOps = map[string]opFunc{
 	"deleteTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return none(c.DeleteTemplate(ctx, a.path("id")))
 	},
+	"validateTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ValidateTemplate(ctx, body[TemplateSpec](a), a.q("id")))
+	},
 	"getTemplateAnalytics": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.GetTemplateAnalytics(ctx, a.qInt("days")))
 	},
