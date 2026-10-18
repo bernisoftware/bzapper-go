@@ -221,6 +221,77 @@ func (c *Client) DeleteTemplate(ctx context.Context, id string) error {
 	return c.exec(ctx, apiRequest{method: http.MethodDelete, path: "/templates/" + seg(id)})
 }
 
+// EditTemplate changes the content of a template that already exists at Meta.
+// Name and language are its identity and do not change. Meta allows editing an
+// APPROVED template once every 24 hours and ten times in 30 days, sends it back
+// to review (it returns to PENDING and does not send until the decision) and
+// keeps the category of an approved template. PUT /templates/{id}.
+func (c *Client) EditTemplate(ctx context.Context, id string, spec TemplateSpec) (*CreateTemplateResult, error) {
+	return call[CreateTemplateResult](ctx, c, apiRequest{method: http.MethodPut, path: "/templates/" + seg(id), body: spec})
+}
+
+// LibraryQuery filters Meta's Template Library. Everything is optional.
+type LibraryQuery struct {
+	Search   string
+	Topic    string
+	Usecase  string
+	Industry string
+	Language string
+}
+
+// LibraryTemplate is a ready-made template from Meta's Template Library.
+type LibraryTemplate struct {
+	ID         string           `json:"id,omitempty"`
+	Name       string           `json:"name"`
+	Language   string           `json:"language"`
+	Category   string           `json:"category"`
+	Topic      string           `json:"topic,omitempty"`
+	Usecase    string           `json:"usecase,omitempty"`
+	Industry   []string         `json:"industry,omitempty"`
+	Header     string           `json:"header,omitempty"`
+	Body       string           `json:"body"`
+	BodyParams []string         `json:"body_params,omitempty"`
+	Buttons    []map[string]any `json:"buttons,omitempty"`
+}
+
+// LibraryTemplateList is the answer of ListLibraryTemplates.
+type LibraryTemplateList struct {
+	Templates []LibraryTemplate `json:"templates"`
+}
+
+// ListLibraryTemplates browses Meta's Template Library: utility and
+// authentication texts Meta has already approved. A template created from one
+// without changing the text is approved at once. GET /templates/library.
+func (c *Client) ListLibraryTemplates(ctx context.Context, q LibraryQuery) (*LibraryTemplateList, error) {
+	return call[LibraryTemplateList](ctx, c, apiRequest{method: http.MethodGet, path: "/templates/library",
+		query: newQuery().str("search", q.Search).str("topic", q.Topic).str("usecase", q.Usecase).
+			str("industry", q.Industry).str("language", q.Language).values()})
+}
+
+// LibraryButtonInput is what a URL or phone button of a library template needs.
+type LibraryButtonInput struct {
+	Type             string `json:"type"` // url | phone_number
+	URL              string `json:"url,omitempty"`
+	URLSuffixExample string `json:"url_suffix_example,omitempty"`
+	Phone            string `json:"phone,omitempty"`
+}
+
+// LibraryCreate creates a template from the Template Library.
+type LibraryCreate struct {
+	LibraryTemplateName string               `json:"library_template_name"`
+	Name                string               `json:"name,omitempty"`
+	Language            string               `json:"language"`
+	ButtonInputs        []LibraryButtonInput `json:"button_inputs,omitempty"`
+	CodeExpiryMinutes   int                  `json:"code_expiry_minutes,omitempty"`
+}
+
+// CreateTemplateFromLibrary creates a template from a Template Library item.
+// The text is Meta's, unchanged — that is what makes it approved at once; you
+// only provide what the buttons need. POST /templates/library.
+func (c *Client) CreateTemplateFromLibrary(ctx context.Context, req LibraryCreate) (*CreateTemplateResult, error) {
+	return call[CreateTemplateResult](ctx, c, apiRequest{method: http.MethodPost, path: "/templates/library", body: req})
+}
+
 // SyncTemplates imports templates that exist at Meta and not here — the ones you
 // created in WhatsApp Manager before using bZapper, or a webhook that never
 // arrived. Without it those templates would be invisible here and sending by

@@ -497,6 +497,16 @@ var conformanceOps = map[string]opFunc{
 	"deleteTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return none(c.DeleteTemplate(ctx, a.path("id")))
 	},
+	"editTemplate": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.EditTemplate(ctx, a.path("id"), body[TemplateSpec](a)))
+	},
+	"listLibraryTemplates": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ListLibraryTemplates(ctx, LibraryQuery{Search: a.q("search"), Topic: a.q("topic"),
+			Usecase: a.q("usecase"), Industry: a.q("industry"), Language: a.q("language")}))
+	},
+	"createTemplateFromLibrary": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.CreateTemplateFromLibrary(ctx, body[LibraryCreate](a)))
+	},
 	"syncTemplates": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.SyncTemplates(ctx))
 	},
