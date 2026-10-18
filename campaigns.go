@@ -177,6 +177,35 @@ type CampaignEstimate struct {
 	EstimatedHuman   string `json:"estimated_human"`
 }
 
+// CampaignMetaCost is what Meta will charge for a template campaign (official
+// rail) and the pace the daily new-contact limit imposes.
+type CampaignMetaCost struct {
+	Currency   string  `json:"currency"`
+	Category   string  `json:"category"`
+	UnitPrice  float64 `json:"unit_price"`
+	Total      float64 `json:"total"`
+	DailyLimit int     `json:"daily_limit,omitempty"`
+	DaysNeeded int     `json:"days_needed,omitempty"`
+}
+
+// EstimateCampaignMetaCost estimates what Meta will charge for `recipients`
+// messages of a template (official rail): charged by Meta on your card —
+// bZapper charges only the subscription — and the days the number's daily
+// new-contact limit requires. GET /campaigns/meta-cost.
+func (c *Client) EstimateCampaignMetaCost(ctx context.Context, recipients int, template, language string) (*CampaignMetaCost, error) {
+	q := url.Values{}
+	q.Set("recipients", strconv.Itoa(recipients))
+	q.Set("template", template)
+	if language != "" {
+		q.Set("language", language)
+	}
+	var out CampaignMetaCost
+	if err := c.do(ctx, http.MethodGet, "/campaigns/meta-cost", q, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // AddRecipientsResult summarizes a recipients import.
 type AddRecipientsResult struct {
 	Inserted   int `json:"inserted"`

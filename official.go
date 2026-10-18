@@ -444,6 +444,9 @@ type OfficialReadiness struct {
 	// BusinessReview is the business verification (APPROVED, PENDING) — what
 	// unlocks higher volume tiers.
 	BusinessReview string `json:"business_review,omitempty"`
+	// Currency is what Meta bills the account in. A Brazilian account still in
+	// USD has to move to BRL (deadline 2027-06-30).
+	Currency       string `json:"currency,omitempty"`
 	QualityRating  string `json:"quality_rating,omitempty"`
 	MessagingLimit string `json:"messaging_limit,omitempty"`
 	// CanSend is the only question that matters: can this project send now?

@@ -704,6 +704,9 @@ var conformanceOps = map[string]opFunc{
 	"createCampaign": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.CreateCampaign(ctx, body[CampaignCreateParams](a)))
 	},
+	"estimateCampaignMetaCost": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.EstimateCampaignMetaCost(ctx, a.qInt("recipients"), a.q("template"), a.q("language")))
+	},
 	"estimateCampaign": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.EstimateCampaign(ctx, CampaignEstimateParams{
 			Recipients: a.qInt("recipients"), Pacing: a.q("pacing"), PoolID: a.q("pool_id")}))
