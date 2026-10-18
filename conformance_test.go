@@ -453,6 +453,9 @@ var conformanceOps = map[string]opFunc{
 	"addOfficialNumber": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.AddOfficialNumber(ctx, a.bodyStr("phone_number_id")))
 	},
+	"getOfficialNumberHealth": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetOfficialNumberHealth(ctx, a.path("id")))
+	},
 	"setDefaultOfficialNumber": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return none(c.SetDefaultOfficialNumber(ctx, a.path("id")))
 	},

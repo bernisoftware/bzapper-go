@@ -753,6 +753,27 @@ func (c *Client) SetDefaultOfficialNumber(ctx context.Context, id string) error 
 	return c.exec(ctx, apiRequest{method: http.MethodPut, path: "/official/numbers/" + seg(id) + "/default"})
 }
 
+// NumberHealthPoint is one change of quality or messaging limit of a number.
+type NumberHealthPoint struct {
+	QualityRating  string `json:"quality_rating"`
+	MessagingLimit string `json:"messaging_limit"`
+	At             string `json:"at"`
+}
+
+// NumberHealth is the current state and the change history of a number.
+type NumberHealth struct {
+	QualityRating  string              `json:"quality_rating"`
+	MessagingLimit string              `json:"messaging_limit"`
+	History        []NumberHealthPoint `json:"history"`
+}
+
+// GetOfficialNumberHealth returns every change of quality rating and messaging
+// limit of a number, newest first — what explains why the limit dropped or when
+// quality worsened. GET /official/numbers/{id}/health.
+func (c *Client) GetOfficialNumberHealth(ctx context.Context, id string) (*NumberHealth, error) {
+	return call[NumberHealth](ctx, c, apiRequest{method: http.MethodGet, path: "/official/numbers/" + seg(id) + "/health"})
+}
+
 // DisconnectOfficialNumber disconnects one number. The conversation history
 // stays (the mirror instance is archived, not deleted); removing the default
 // promotes the oldest remaining number. DELETE /official/numbers/{id}.
