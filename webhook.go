@@ -56,6 +56,9 @@ type WebhookSender struct {
 	// person only arrived by @lid and the LID→phone map doesn't know it yet.
 	Phone string `json:"phone,omitempty"`
 	Name  string `json:"name,omitempty"`
+	// BSUID is the Meta business-scoped user ID (official rail); the only
+	// address of someone who hides the phone behind a username.
+	BSUID string `json:"bsuid,omitempty"`
 }
 
 // WebhookConnection identifies the bZapper Connect connection an event belongs

@@ -27,6 +27,7 @@ type ContactAddress struct {
 type CreateContactParams struct {
 	Phone        string          `json:"phone"`
 	Lid          string          `json:"lid,omitempty"`
+	Bsuid        string          `json:"bsuid,omitempty"` // Meta BSUID (official rail)
 	Name         string          `json:"name,omitempty"`
 	Email        string          `json:"email,omitempty"`
 	Document     string          `json:"document,omitempty"`
@@ -54,6 +55,7 @@ type ContactImportRow struct {
 	// ("<digits>@lid"); digits without "@lid" are always a phone.
 	Phone        string          `json:"phone"`
 	Lid          string          `json:"lid,omitempty"`
+	Bsuid        string          `json:"bsuid,omitempty"` // Meta BSUID (official rail)
 	Name         string          `json:"name,omitempty"`
 	Email        string          `json:"email,omitempty"`
 	Document     string          `json:"document,omitempty"`

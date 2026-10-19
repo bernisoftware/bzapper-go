@@ -654,6 +654,9 @@ type ContactRecord struct {
 	// Lid is the WhatsApp LID ("<digits>@lid"): the address of a LID-only
 	// contact, or the one WhatsApp associated with the phone (contact detail).
 	Lid string `json:"lid,omitempty"`
+	// Bsuid is the Meta business-scoped user ID (official rail): the address of
+	// a contact who hides the phone behind a username, or the one Meta sent.
+	Bsuid string `json:"bsuid,omitempty"`
 }
 
 // ContactRecordList is the response of ListContacts.
