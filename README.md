@@ -8,11 +8,11 @@ API keys, and track usage. Built on the standard library only (`net/http` +
 ## Install
 
 ```sh
-go get github.com/bernisoftware/bzapper-go@v0.15.2
+go get github.com/bernisoftware/bzapper-go@v0.16.0
 ```
 
 **Pin the exact version** (`@vX.Y.Z` in `go get`, which `go.mod` then records as
-`require github.com/bernisoftware/bzapper-go v0.15.2`): every release note states
+`require github.com/bernisoftware/bzapper-go v0.16.0`): every release note states
 whether it changes the public surface (breaking vs additive), so upgrading is a
 deliberate decision. Zero runtime dependencies — standard library only.
 
@@ -175,6 +175,7 @@ All send methods return `(*bzapper.Message, error)` — the queued envelope with
 list, _ := client.ListInstances(ctx)
 inst, _ := client.CreateInstance(ctx, bzapper.CreateInstanceParams{Phone: "+5511999999999", Nickname: "vendas"})
 inst, _ = client.GetInstance(ctx, inst.ID)
+up, _ := client.GetInstanceUptime(ctx, inst.ID) // up.Windows.Last24h / Last7d / Last30d (*float64, nil = no history yet), up.Events
 
 // Connect by QR or pairing code
 res, _ := client.ConnectInstance(ctx, inst.ID, bzapper.ConnectQR)   // res.QRCode
@@ -657,6 +658,15 @@ With the customer's own API key, list and disconnect partner apps using the acco
 ```go
 apps, _ := client.ListConnectedApps(ctx) // []PartnerConnection, with PartnerName / PartnerLogoURL
 client.RevokeConnectedApp(ctx, apps[0].ID) // admin; the partner's key stops working immediately
+```
+
+### AI connector (MCP)
+
+AI apps (e.g. Claude) a person authorized to operate the account through the MCP connector:
+
+```go
+conns, _ := client.ListAIConnections(ctx) // []AIConnection: ClientName, UserEmail, UserRole, Scopes, LastUsedAt
+client.RevokeAIConnection(ctx, conns[0].ID) // its tokens stop working on the next call
 ```
 
 ## Errors, retries and idempotency

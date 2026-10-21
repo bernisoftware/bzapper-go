@@ -45,6 +45,17 @@ func (c *Client) GetInstance(ctx context.Context, id string) (*Instance, error) 
 	return &out, nil
 }
 
+// GetInstanceUptime returns the number's availability: the share of time it was
+// connected over the last 24 hours, 7 days and 30 days, since when it is in its
+// current status, and the 20 latest status changes. GET /instances/{id}/uptime.
+func (c *Client) GetInstanceUptime(ctx context.Context, id string) (*InstanceUptime, error) {
+	var out InstanceUptime
+	if err := c.do(ctx, http.MethodGet, "/instances/"+url.PathEscape(id)+"/uptime", nil, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ConnectInstance starts a connection for an instance using the given method
 // (ConnectQR or ConnectCode). Pass an empty method to use the server default
 // (qr). POST /instances/{id}/connect.

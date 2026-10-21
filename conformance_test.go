@@ -371,6 +371,9 @@ var conformanceOps = map[string]opFunc{
 	"getInstance": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.GetInstance(ctx, a.path("id")))
 	},
+	"getInstanceUptime": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.GetInstanceUptime(ctx, a.path("id")))
+	},
 	"deleteInstance": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return none(c.DeleteInstance(ctx, a.path("id")))
 	},
@@ -913,6 +916,14 @@ var conformanceOps = map[string]opFunc{
 	},
 	"getPricing": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
 		return ret(c.GetPricing(ctx))
+	},
+
+	// --- AI connector (MCP) ---
+	"listAIConnections": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return ret(c.ListAIConnections(ctx))
+	},
+	"revokeAIConnection": func(ctx context.Context, c *Client, _ *PartnerClient, a *caseArgs) (any, error) {
+		return none(c.RevokeAIConnection(ctx, a.path("id")))
 	},
 
 	// --- bZapper Connect: customer side (Client) ---

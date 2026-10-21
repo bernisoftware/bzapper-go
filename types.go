@@ -274,6 +274,36 @@ type Instance struct {
 	ArchivedAt string `json:"archived_at,omitempty"`
 }
 
+// InstanceUptime is a number's availability, returned by GetInstanceUptime.
+type InstanceUptime struct {
+	InstanceID string `json:"instance_id"`
+	// Status is the current status.
+	Status string `json:"status,omitempty"`
+	// Since is when the number entered its current status.
+	Since string `json:"since,omitempty"`
+	// TrackedSince is the first recorded status change. A window that goes back
+	// further shrinks to it instead of counting unrecorded time as offline.
+	TrackedSince string                `json:"tracked_since,omitempty"`
+	Windows      UptimeWindows         `json:"windows"`
+	Events       []InstanceUptimeEvent `json:"events,omitempty"`
+}
+
+// UptimeWindows is the percent of time connected (0–100, one decimal; warming
+// counts as connected). A nil value means the history does not cover that window
+// yet.
+type UptimeWindows struct {
+	Last24h *float64 `json:"24h"`
+	Last7d  *float64 `json:"7d"`
+	Last30d *float64 `json:"30d"`
+}
+
+// InstanceUptimeEvent is one status change (the 20 latest, newest first).
+type InstanceUptimeEvent struct {
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+	At     string `json:"at"`
+}
+
 // ReachOutLockCode is WhatsApp's anti-spam reach-out time-lock. It is a
 // per-account limit, not an infrastructure failure: the session stays healthy,
 // replies to people who messaged first still go through, and it usually clears
